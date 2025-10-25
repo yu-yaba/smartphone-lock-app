@@ -1,0 +1,21 @@
+# Copy this file to `local.properties` and fill in your local environment values.
+# Do NOT commit the generated `local.properties` file: it contains machine-specific
+# paths and secrets. The Android Gradle Plugin will read these values and expose
+# them via BuildConfig for the application module.
+#
+# If you prefer, you can also set the matching environment variables (e.g.
+# `SUPABASE_URL`). The build succeeds when either local.properties or the
+# environment provides a non-empty value. Leaving both blank causes the Gradle
+# build to fail so that secrets are never accidentally omitted from a build.
+
+# ---- Supabase configuration ----
+# e.g. https://your-project.supabase.co
+supabase.url=
+# Supabase anon/public API key
+supabase.anonKey=
+
+# ---- AlarmManager configuration ----
+# Intent action used when scheduling a lock alarm
+alarmManager.lockIntentAction=
+# Intent action used when cancelling or handling the lock alarm
+alarmManager.unlockIntentAction=

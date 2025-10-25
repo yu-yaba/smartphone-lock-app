@@ -109,11 +109,26 @@
 ---
 
 ## 7. 今後の課題
-- Lock Task Modeの機種依存動作の検証（Pixel, Galaxy, Xperia等でPoC実施）  
-- AlarmManagerの省電力モード下での精度検証  
-- Supabase無料枠でのスケーラビリティ確認  
-- 緊急解除UIや「安全警告ダイアログ」の導入  
+- Lock Task Modeの機種依存動作の検証（Pixel, Galaxy, Xperia等でPoC実施）
+- AlarmManagerの省電力モード下での精度検証
+- Supabase無料枠でのスケーラビリティ確認
+- 緊急解除UIや「安全警告ダイアログ」の導入
 - UX改善（ロック中の残り時間表示、解除時アニメーションなど）
+
+---
+
+## 付録: 開発環境メモ
+
+### local.properties からの機密値連携
+- `local.properties.sample` をコピーして `local.properties` を作成し、Supabase / AlarmManager 用の値を入力する。
+- Gradle ビルド時に `local.properties` の値が `BuildConfig` に自動的に書き込まれる。
+  - `BuildConfig.SUPABASE_URL`
+  - `BuildConfig.SUPABASE_ANON_KEY`
+  - `BuildConfig.ALARM_MANAGER_LOCK_INTENT_ACTION`
+  - `BuildConfig.ALARM_MANAGER_UNLOCK_INTENT_ACTION`
+- `local.properties` は秘匿情報を含むため、Git にはコミットしないこと。
+- `local.properties` が存在しない場合でも、同名の環境変数（例：`SUPABASE_URL`）を設定しておけばビルドできる。
+- ファイル・環境変数の両方で値が見つからない場合は Gradle ビルドが失敗する。
 
 ---
 
