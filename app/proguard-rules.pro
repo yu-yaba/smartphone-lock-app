@@ -19,3 +19,8 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Keep BuildConfig so BuildConfig.SUPABASE_* fields remain available when minified.
+-keep class com.example.smartphone_lock.BuildConfig {
+    *;
+}
