@@ -23,6 +23,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // DI パイプラインの初期化が起動時に行われることを保証する。
+        configRepository.getAppConfig()
         setContent {
             SmartphoneLockTheme {
                 val supabaseConfig = remember { supabaseConfigRepository.fetch() }
