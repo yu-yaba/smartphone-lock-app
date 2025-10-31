@@ -7,6 +7,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.createSupabaseClient
+import io.ktor.client.engine.android.Android
 import javax.inject.Singleton
 
 @Module
@@ -29,6 +30,8 @@ object SupabaseModule {
         return createSupabaseClient(
             supabaseUrl = url,
             supabaseKey = anonKey
-        )
+        ) {
+            httpEngine = Android.create()
+        }
     }
 }
