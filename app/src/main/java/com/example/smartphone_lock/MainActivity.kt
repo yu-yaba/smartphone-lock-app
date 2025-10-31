@@ -1,6 +1,7 @@
 package com.example.smartphone_lock
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.LaunchedEffect
@@ -8,12 +9,20 @@ import androidx.compose.runtime.remember
 import com.example.smartphone_lock.config.SupabaseConfigRepository
 import dagger.hilt.android.AndroidEntryPoint
 import com.example.smartphone_lock.ui.theme.SmartphoneLockTheme
+import io.github.jan.supabase.SupabaseClient
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var supabaseClient: SupabaseClient
+
+    @Inject
+    lateinit var supabaseConfigRepository: SupabaseConfigRepository
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val supabaseConfigRepository = SupabaseConfigRepository()
         setContent {
             SmartphoneLockTheme {
                 val supabaseConfig = remember { supabaseConfigRepository.fetch() }
@@ -23,9 +32,16 @@ class MainActivity : ComponentActivity() {
                             "Supabase config is missing. Set SUPABASE_URL and SUPABASE_ANON_KEY in local.properties."
                         }
                     }
+                    LaunchedEffect(supabaseClient) {
+                        Log.d(TAG, "Supabase client ready: ${supabaseClient.supabaseUrl}")
+                    }
                 }
                 SmartphoneLockApp()
             }
         }
+    }
+
+    private companion object {
+        const val TAG = "MainActivity"
     }
 }
