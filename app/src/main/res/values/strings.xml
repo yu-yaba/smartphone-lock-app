@@ -1,3 +1,12 @@
 <resources>
     <string name="app_name">Smartphone Lock</string>
+    <string name="device_admin_description">スマートフォンのロックタスク制御を提供します。</string>
+    <string name="permission_screen_title">管理者権限が必要です</string>
+    <string name="permission_screen_body">スマホ制御を有効にするには管理者権限が必要です</string>
+    <string name="permission_screen_button">権限を有効にする</string>
+    <string name="lock_screen_title">ロックタスクの制御</string>
+    <string name="lock_screen_start">ロックタスク開始</string>
+    <string name="lock_screen_stop">ロックタスク解除</string>
+    <string name="lock_screen_status_enabled">管理者権限は有効です</string>
+    <string name="lock_screen_status_disabled">管理者権限が無効です</string>
 </resources>
