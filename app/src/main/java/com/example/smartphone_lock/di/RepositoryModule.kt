@@ -1,6 +1,8 @@
 package com.example.smartphone_lock.di
 
+import com.example.smartphone_lock.data.repository.AdminPermissionRepository
 import com.example.smartphone_lock.data.repository.ConfigRepository
+import com.example.smartphone_lock.data.repository.DefaultAdminPermissionRepository
 import com.example.smartphone_lock.data.repository.DefaultConfigRepository
 import dagger.Binds
 import dagger.Module
@@ -20,4 +22,10 @@ abstract class RepositoryModule {
     abstract fun bindConfigRepository(
         impl: DefaultConfigRepository
     ): ConfigRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindAdminPermissionRepository(
+        impl: DefaultAdminPermissionRepository
+    ): AdminPermissionRepository
 }
