@@ -19,11 +19,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.smartphone_lock.R
-import com.example.smartphone_lock.ui.lock.LockViewModel
+import com.example.smartphone_lock.ui.lock.LockScreenViewModel
 
 @Composable
 fun PermissionScreen(
-    lockViewModel: LockViewModel,
+    lockViewModel: LockScreenViewModel,
     modifier: Modifier = Modifier
 ) {
     val isAdminActive = lockViewModel.isAdminActive.collectAsStateWithLifecycle()
