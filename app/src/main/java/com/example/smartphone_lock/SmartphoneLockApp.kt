@@ -13,18 +13,18 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.smartphone_lock.navigation.AppDestination
+import com.example.smartphone_lock.ui.lock.LockScreenViewModel
 import com.example.smartphone_lock.ui.screen.AuthScreen
 import com.example.smartphone_lock.ui.screen.CompleteScreen
 import com.example.smartphone_lock.ui.screen.HomeScreen
-import com.example.smartphone_lock.ui.screen.LockSettingScreen
 import com.example.smartphone_lock.ui.screen.LockScreen
+import com.example.smartphone_lock.ui.screen.LockSettingScreen
 import com.example.smartphone_lock.ui.screen.PermissionScreen
-import com.example.smartphone_lock.ui.lock.LockViewModel
 
 @Composable
 fun SmartphoneLockApp(modifier: Modifier = Modifier) {
     val navController = rememberNavController()
-    val lockViewModel: LockViewModel = hiltViewModel()
+    val lockViewModel: LockScreenViewModel = hiltViewModel()
     val isAdminActive = lockViewModel.isAdminActive.collectAsStateWithLifecycle()
     val currentBackStackEntry = navController.currentBackStackEntryAsState().value
 
