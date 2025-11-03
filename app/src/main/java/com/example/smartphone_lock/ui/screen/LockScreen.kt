@@ -1,6 +1,7 @@
 package com.example.smartphone_lock.ui.screen
 
 import android.app.Activity
+import android.view.MotionEvent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -22,8 +23,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.stopScroll
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,6 +40,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -44,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -57,6 +62,7 @@ import com.example.smartphone_lock.ui.lock.LockScreenViewModel
 import kotlin.math.abs
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
 
 @Composable
 fun LockScreen(
@@ -65,7 +71,8 @@ fun LockScreen(
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
-    val isAdminActive by lockViewModel.isAdminActive.collectAsStateWithLifecycle()
+    val permissionState by lockViewModel.permissionState.collectAsStateWithLifecycle()
+    val permissionsGranted = permissionState.allGranted
     val uiState by lockViewModel.uiState.collectAsStateWithLifecycle()
 
     Box(
@@ -139,7 +146,7 @@ fun LockScreen(
                             selectedHours = uiState.selectedHours,
                             selectedMinutes = uiState.selectedMinutes,
                             onSelectionChanged = lockViewModel::updateSelectedDuration,
-                            enabled = isAdminActive,
+                            enabled = permissionsGranted,
                             modifier = Modifier.fillMaxWidth()
                         )
                         Spacer(modifier = Modifier.height(12.dp))
@@ -149,9 +156,9 @@ fun LockScreen(
                             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                             textAlign = TextAlign.Center
                         )
-                        AnimatedVisibility(visible = !isAdminActive) {
+                        AnimatedVisibility(visible = !permissionsGranted) {
                             Text(
-                                text = stringResource(id = R.string.lock_screen_admin_inactive),
+                                text = stringResource(id = R.string.lock_screen_permissions_missing),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.error,
                                 textAlign = TextAlign.Center,
@@ -206,7 +213,7 @@ fun LockScreen(
             }
 
             Button(
-                onClick = { activity?.let(lockViewModel::startLock) },
+                onClick = { lockViewModel.startLock(activity) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .shadow(16.dp, RoundedCornerShape(32.dp), clip = false),
@@ -215,7 +222,7 @@ fun LockScreen(
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary
                 ),
-                enabled = activity != null && isAdminActive && !uiState.isLocked
+                enabled = activity != null && permissionsGranted && !uiState.isLocked
             ) {
                 Text(
                     text = stringResource(id = R.string.lock_screen_start_button),
@@ -253,6 +260,10 @@ private fun LockDurationDial(
     val dialHeight = 200.dp
     val highlightHeight = 56.dp
 
+    val hourListState = rememberLazyListState()
+    val minuteListState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+
     val sanitizedMinutes = remember(selectedHours, selectedMinutes, minuteValues) {
         minuteValues.firstOrNull { it == selectedMinutes } ?: minuteValues.firstOrNull() ?: 0
     }
@@ -273,9 +284,25 @@ private fun LockDurationDial(
 
     val handleScrollStateChange: (DialType, Boolean) -> Unit = { dial, isScrolling ->
         if (isScrolling) {
+            if (activeDial != dial) {
+                when (dial) {
+                    DialType.HOURS -> coroutineScope.launch { minuteListState.stopScroll() }
+                    DialType.MINUTES -> coroutineScope.launch { hourListState.stopScroll() }
+                }
+            }
             activeDial = dial
         } else if (activeDial == dial) {
             activeDial = null
+        }
+    }
+
+    val handlePointerDown: (DialType) -> Unit = { dial ->
+        if (enabled) {
+            when (dial) {
+                DialType.HOURS -> coroutineScope.launch { minuteListState.stopScroll() }
+                DialType.MINUTES -> coroutineScope.launch { hourListState.stopScroll() }
+            }
+            activeDial = dial
         }
     }
 
@@ -316,7 +343,9 @@ private fun LockDurationDial(
             textColor = textColor,
             valueFormatter = { it.toString() },
             onScrollStateChange = handleScrollStateChange,
-            onValueSelected = handleValueSelected
+            onValueSelected = handleValueSelected,
+            listState = hourListState,
+            onPointerDown = handlePointerDown
         )
         Text(
             text = stringResource(id = R.string.lock_screen_duration_separator),
@@ -335,7 +364,9 @@ private fun LockDurationDial(
             textColor = textColor,
             valueFormatter = { value -> value.toString().padStart(2, '0') },
             onScrollStateChange = handleScrollStateChange,
-            onValueSelected = handleValueSelected
+            onValueSelected = handleValueSelected,
+            listState = minuteListState,
+            onPointerDown = handlePointerDown
         )
     }
 }
@@ -354,6 +385,8 @@ private fun DialColumn(
     valueFormatter: (Int) -> String,
     onScrollStateChange: (DialType, Boolean) -> Unit,
     onValueSelected: (DialType, Int) -> Unit,
+    listState: LazyListState,
+    onPointerDown: (DialType) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -371,7 +404,9 @@ private fun DialColumn(
             textColor = textColor,
             valueFormatter = valueFormatter,
             onScrollStateChange = onScrollStateChange,
-            onValueSelected = onValueSelected
+            onValueSelected = onValueSelected,
+            listState = listState,
+            onPointerDown = onPointerDown
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
@@ -396,13 +431,13 @@ private fun NumberDial(
     valueFormatter: (Int) -> String,
     onScrollStateChange: (DialType, Boolean) -> Unit,
     onValueSelected: (DialType, Int) -> Unit,
+    listState: LazyListState,
+    onPointerDown: (DialType) -> Unit,
     modifier: Modifier = Modifier
 ) {
     if (values.isEmpty()) {
         return
     }
-
-    val listState = rememberLazyListState()
     val flingBehavior = rememberSnapFlingBehavior(lazyListState = listState)
     var programmaticScroll by remember { mutableStateOf(false) }
 
@@ -466,6 +501,12 @@ private fun NumberDial(
         modifier = modifier
             .fillMaxWidth()
             .height(dialHeight)
+            .pointerInteropFilter { event ->
+                if (event.action == MotionEvent.ACTION_DOWN) {
+                    onPointerDown(dialType)
+                }
+                false
+            }
     ) {
         Box(
             modifier = Modifier
