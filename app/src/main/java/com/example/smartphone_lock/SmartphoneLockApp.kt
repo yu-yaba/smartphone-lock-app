@@ -35,7 +35,7 @@ fun SmartphoneLockApp(
     }
 
     LaunchedEffect(permissionState.value.allGranted, currentBackStackEntry?.destination?.route) {
-        val currentRoute = currentBackStackEntry?.destination?.route
+        val currentRoute = currentBackStackEntry?.destination?.route ?: return@LaunchedEffect
         val target = determinePermissionDestination(currentRoute, permissionState.value.allGranted)
         if (target != null) {
             navController.navigateAndSetAsRoot(target)
