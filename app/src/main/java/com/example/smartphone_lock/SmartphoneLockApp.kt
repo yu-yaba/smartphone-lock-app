@@ -19,12 +19,14 @@ import com.example.smartphone_lock.ui.screen.CompleteScreen
 import com.example.smartphone_lock.ui.screen.HomeScreen
 import com.example.smartphone_lock.ui.screen.LockScreen
 import com.example.smartphone_lock.ui.screen.LockSettingScreen
-import com.example.smartphone_lock.ui.screen.PermissionScreen
+import com.example.smartphone_lock.ui.screen.PermissionIntroScreen
 
 @Composable
-fun SmartphoneLockApp(modifier: Modifier = Modifier) {
+fun SmartphoneLockApp(
+    modifier: Modifier = Modifier,
+    lockViewModel: LockScreenViewModel = hiltViewModel()
+) {
     val navController = rememberNavController()
-    val lockViewModel: LockScreenViewModel = hiltViewModel()
     val permissionState = lockViewModel.permissionState.collectAsStateWithLifecycle()
     val currentBackStackEntry = navController.currentBackStackEntryAsState().value
 
@@ -34,12 +36,8 @@ fun SmartphoneLockApp(modifier: Modifier = Modifier) {
 
     LaunchedEffect(permissionState.value.allGranted, currentBackStackEntry?.destination?.route) {
         val currentRoute = currentBackStackEntry?.destination?.route ?: return@LaunchedEffect
-        val target = if (permissionState.value.allGranted) {
-            AppDestination.Lock.route
-        } else {
-            AppDestination.Permission.route
-        }
-        if (currentRoute != target) {
+        val target = determinePermissionDestination(currentRoute, permissionState.value.allGranted)
+        if (target != null) {
             navController.navigateAndSetAsRoot(target)
         }
     }
@@ -54,7 +52,7 @@ fun SmartphoneLockApp(modifier: Modifier = Modifier) {
             modifier = Modifier.fillMaxSize()
         ) {
             composable(AppDestination.Permission.route) {
-                PermissionScreen(lockViewModel = lockViewModel)
+                PermissionIntroScreen(lockViewModel = lockViewModel)
             }
 
             composable(AppDestination.Lock.route) {
@@ -117,6 +115,22 @@ fun SmartphoneLockApp(modifier: Modifier = Modifier) {
                 )
             }
         }
+    }
+}
+
+internal fun determinePermissionDestination(
+    currentRoute: String?,
+    allGranted: Boolean
+): String? {
+    val target = if (allGranted) {
+        AppDestination.Lock.route
+    } else {
+        AppDestination.Permission.route
+    }
+    return if (currentRoute == null || currentRoute != target) {
+        target
+    } else {
+        null
     }
 }
 
