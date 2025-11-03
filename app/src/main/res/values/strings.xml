@@ -1,9 +1,13 @@
 <resources>
     <string name="app_name">Smartphone Lock</string>
-    <string name="device_admin_description">スマートフォンのロックタスク制御を提供します。</string>
-    <string name="permission_screen_title">管理者権限が必要です</string>
-    <string name="permission_screen_body">スマホ制御を有効にするには管理者権限が必要です</string>
-    <string name="permission_screen_button">権限を有効にする</string>
+    <string name="permission_screen_title">必要な権限を確認してください</string>
+    <string name="permission_screen_body">集中モードではオーバーレイ、使用状況へのアクセス、通知アクセスを利用する予定です。今後のバージョンで各設定画面への遷移を追加します。</string>
+    <string name="permission_screen_button">権限状態を再読み込み</string>
+    <string name="permission_screen_overlay_label">オーバーレイ表示</string>
+    <string name="permission_screen_usage_label">使用状況へのアクセス</string>
+    <string name="permission_screen_notification_label">通知へのアクセス</string>
+    <string name="permission_screen_status_granted">有効</string>
+    <string name="permission_screen_status_missing">未取得</string>
     <string name="lock_screen_title">集中モード</string>
     <string name="lock_screen_subtitle">没入して作業に集中しましょう</string>
     <string name="lock_screen_duration_label">集中する時間を選択</string>
@@ -16,7 +20,7 @@
     <string name="lock_screen_duration_separator">:</string>
     <string name="lock_screen_start_button">ロック開始</string>
     <string name="lock_screen_stop_button">ロック解除</string>
-    <string name="lock_screen_admin_inactive">管理者権限が無効です。権限を有効にしてください。</string>
+    <string name="lock_screen_permissions_missing">必要な権限が不足しています。権限画面で設定を完了してください。</string>
     <string name="lock_screen_locked_message">集中モード中</string>
     <string name="lock_screen_remaining_time_hours_minutes">残り %1$d時間%2$d分</string>
     <string name="lock_screen_remaining_time_minutes_seconds">残り %1$d分%2$d秒</string>
