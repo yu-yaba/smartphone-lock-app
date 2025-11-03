@@ -1,19 +1,13 @@
 package com.example.smartphone_lock.ui.lock
 
 import android.app.Activity
-import android.app.admin.DevicePolicyManager
-import android.content.ComponentName
-import android.content.Context
-import android.content.Intent
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.smartphone_lock.R
-import com.example.smartphone_lock.SmartphoneLockDeviceAdminReceiver
 import com.example.smartphone_lock.data.datastore.DataStoreManager
-import com.example.smartphone_lock.data.repository.AdminPermissionRepository
+import com.example.smartphone_lock.data.repository.LockPermissionsRepository
+import com.example.smartphone_lock.model.LockPermissionState
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import java.lang.ref.WeakReference
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -30,19 +24,15 @@ import kotlinx.coroutines.launch
 
 @HiltViewModel
 class LockScreenViewModel @Inject constructor(
-    @ApplicationContext private val context: Context,
-    private val devicePolicyManager: DevicePolicyManager,
-    private val adminPermissionRepository: AdminPermissionRepository,
+    private val lockPermissionsRepository: LockPermissionsRepository,
     private val dataStoreManager: DataStoreManager
 ) : ViewModel() {
 
-    private val deviceAdminComponent = ComponentName(context, SmartphoneLockDeviceAdminReceiver::class.java)
-
-    val isAdminActive: StateFlow<Boolean> = adminPermissionRepository.isAdminGrantedFlow
+    val permissionState: StateFlow<LockPermissionState> = lockPermissionsRepository.permissionStateFlow
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.Eagerly,
-            initialValue = devicePolicyManager.isAdminActive(deviceAdminComponent)
+            initialValue = LockPermissionState()
         )
 
     private val _uiState = MutableStateFlow(LockScreenUiState())
@@ -53,7 +43,7 @@ class LockScreenViewModel @Inject constructor(
     private var pendingLockActivationUntil: Long? = null
 
     init {
-        refreshAdminState()
+        refreshPermissions()
         observeLockState()
     }
 
@@ -125,27 +115,10 @@ class LockScreenViewModel @Inject constructor(
         }
     }
 
-    fun refreshAdminState() {
+    fun refreshPermissions() {
         viewModelScope.launch {
-            val active = devicePolicyManager.isAdminActive(deviceAdminComponent)
-            adminPermissionRepository.setAdminGranted(active)
+            lockPermissionsRepository.refreshPermissionState()
         }
-    }
-
-    fun onAdminPermissionResult(granted: Boolean) {
-        viewModelScope.launch {
-            if (granted) {
-                val active = devicePolicyManager.isAdminActive(deviceAdminComponent)
-                adminPermissionRepository.setAdminGranted(active)
-            } else {
-                adminPermissionRepository.setAdminGranted(false)
-            }
-        }
-    }
-
-    fun buildAddDeviceAdminIntent(): Intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-        putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, deviceAdminComponent)
-        putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, context.getString(R.string.permission_screen_body))
     }
 
     fun updateSelectedDuration(hours: Int, minutes: Int) {
@@ -162,9 +135,10 @@ class LockScreenViewModel @Inject constructor(
         }
     }
 
-    fun startLock(activity: Activity) {
-        if (!devicePolicyManager.isAdminActive(deviceAdminComponent)) {
-            Log.w(TAG, "Cannot start lock task without active admin")
+    fun startLock(activity: Activity?) {
+        val permissions = permissionState.value
+        if (!permissions.allGranted) {
+            Log.w(TAG, "Cannot start lock: missing permissions $permissions")
             return
         }
         val selectedState = uiState.value
@@ -172,8 +146,7 @@ class LockScreenViewModel @Inject constructor(
         val lockEndTimestamp = System.currentTimeMillis() +
             TimeUnit.HOURS.toMillis(hours.toLong()) +
             TimeUnit.MINUTES.toMillis(minutes.toLong())
-        activityRef = WeakReference(activity)
-        startLockTask(activity)
+        activityRef = activity?.let(::WeakReference)
         countdownJob?.cancel()
         pendingLockActivationUntil = lockEndTimestamp
         _uiState.update { current ->
@@ -191,8 +164,6 @@ class LockScreenViewModel @Inject constructor(
 
     fun stopLock(activity: Activity? = null) {
         countdownJob?.cancel()
-        val targetActivity = activity ?: activityRef?.get()
-        targetActivity?.let { stopLockTask(it) }
         activityRef = null
         pendingLockActivationUntil = null
         _uiState.update { current ->
@@ -224,28 +195,6 @@ class LockScreenViewModel @Inject constructor(
 
     private fun onCountdownFinished() {
         stopLock(activityRef?.get())
-    }
-
-    private fun startLockTask(activity: Activity) {
-        runCatching {
-            if (devicePolicyManager.isDeviceOwnerApp(activity.packageName)) {
-                devicePolicyManager.setLockTaskPackages(
-                    deviceAdminComponent,
-                    arrayOf(activity.packageName)
-                )
-            }
-            activity.startLockTask()
-        }.onFailure { throwable ->
-            Log.e(TAG, "Failed to start lock task", throwable)
-        }
-    }
-
-    private fun stopLockTask(activity: Activity) {
-        runCatching {
-            activity.stopLockTask()
-        }.onFailure { throwable ->
-            Log.e(TAG, "Failed to stop lock task", throwable)
-        }
     }
 
     companion object {

@@ -25,16 +25,16 @@ import com.example.smartphone_lock.ui.screen.PermissionScreen
 fun SmartphoneLockApp(modifier: Modifier = Modifier) {
     val navController = rememberNavController()
     val lockViewModel: LockScreenViewModel = hiltViewModel()
-    val isAdminActive = lockViewModel.isAdminActive.collectAsStateWithLifecycle()
+    val permissionState = lockViewModel.permissionState.collectAsStateWithLifecycle()
     val currentBackStackEntry = navController.currentBackStackEntryAsState().value
 
     LaunchedEffect(Unit) {
-        lockViewModel.refreshAdminState()
+        lockViewModel.refreshPermissions()
     }
 
-    LaunchedEffect(isAdminActive.value, currentBackStackEntry?.destination?.route) {
+    LaunchedEffect(permissionState.value.allGranted, currentBackStackEntry?.destination?.route) {
         val currentRoute = currentBackStackEntry?.destination?.route ?: return@LaunchedEffect
-        val target = if (isAdminActive.value) {
+        val target = if (permissionState.value.allGranted) {
             AppDestination.Lock.route
         } else {
             AppDestination.Permission.route
