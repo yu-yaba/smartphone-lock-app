@@ -5,9 +5,9 @@ package com.example.smartphone_lock.model
  * すべて true の場合にロックを開始できる想定。
  */
 data class LockPermissionState(
-    val overlayGranted: Boolean = true,
-    val usageStatsGranted: Boolean = true,
-    val notificationAccessGranted: Boolean = true
+    val overlayGranted: Boolean = false,
+    val usageStatsGranted: Boolean = false,
+    val notificationAccessGranted: Boolean = false
 ) {
     val allGranted: Boolean
         get() = overlayGranted && usageStatsGranted && notificationAccessGranted
