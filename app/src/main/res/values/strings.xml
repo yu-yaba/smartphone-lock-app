@@ -4,9 +4,21 @@
     <string name="permission_screen_title">管理者権限が必要です</string>
     <string name="permission_screen_body">スマホ制御を有効にするには管理者権限が必要です</string>
     <string name="permission_screen_button">権限を有効にする</string>
-    <string name="lock_screen_title">ロックタスクの制御</string>
-    <string name="lock_screen_start">ロックタスク開始</string>
-    <string name="lock_screen_stop">ロックタスク解除</string>
-    <string name="lock_screen_status_enabled">管理者権限は有効です</string>
-    <string name="lock_screen_status_disabled">管理者権限が無効です</string>
+    <string name="lock_screen_title">集中モード</string>
+    <string name="lock_screen_subtitle">没入して作業に集中しましょう</string>
+    <string name="lock_screen_duration_label">集中する時間を選択</string>
+    <string name="lock_screen_duration_hint">1分〜72時間、1分単位で調整できます</string>
+    <string name="lock_screen_selected_duration_hours_only">%1$d時間</string>
+    <string name="lock_screen_selected_duration_minutes_only">%1$d分</string>
+    <string name="lock_screen_selected_duration_hours_minutes">%1$d時間%2$d分</string>
+    <string name="lock_screen_hours_label">時間</string>
+    <string name="lock_screen_minutes_label">分</string>
+    <string name="lock_screen_duration_separator">:</string>
+    <string name="lock_screen_start_button">ロック開始</string>
+    <string name="lock_screen_stop_button">ロック解除</string>
+    <string name="lock_screen_admin_inactive">管理者権限が無効です。権限を有効にしてください。</string>
+    <string name="lock_screen_locked_message">集中モード中</string>
+    <string name="lock_screen_remaining_time_hours_minutes">残り %1$d時間%2$d分</string>
+    <string name="lock_screen_remaining_time_minutes_seconds">残り %1$d分%2$d秒</string>
+    <string name="lock_screen_remaining_time_seconds">残り %1$d秒</string>
 </resources>
