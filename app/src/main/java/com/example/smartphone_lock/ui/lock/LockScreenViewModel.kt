@@ -191,8 +191,6 @@ class LockScreenViewModel @Inject constructor(
         }
         viewModelScope.launch {
             dataStoreManager.updateLockState(true, lockStartTimestamp, lockEndTimestamp)
-        }
-        if (!overlayRunning) {
             OverlayLockService.start(appContext)
             overlayRunning = true
         }
@@ -207,8 +205,6 @@ class LockScreenViewModel @Inject constructor(
         }
         viewModelScope.launch {
             dataStoreManager.updateLockState(false, null, null)
-        }
-        if (overlayRunning) {
             OverlayLockService.stop(appContext)
             overlayRunning = false
         }
