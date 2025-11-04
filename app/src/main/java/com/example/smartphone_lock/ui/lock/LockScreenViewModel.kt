@@ -1,13 +1,20 @@
 package com.example.smartphone_lock.ui.lock
 
 import android.app.Activity
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.example.smartphone_lock.data.datastore.DataStoreManager
 import com.example.smartphone_lock.data.repository.LockPermissionsRepository
 import com.example.smartphone_lock.model.LockPermissionState
+import com.example.smartphone_lock.service.OverlayLockService
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import java.lang.ref.WeakReference
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -25,7 +32,8 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class LockScreenViewModel @Inject constructor(
     private val lockPermissionsRepository: LockPermissionsRepository,
-    private val dataStoreManager: DataStoreManager
+    private val dataStoreManager: DataStoreManager,
+    @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
     val permissionState: StateFlow<LockPermissionState> = lockPermissionsRepository.permissionStateFlow
@@ -41,6 +49,7 @@ class LockScreenViewModel @Inject constructor(
     private var countdownJob: Job? = null
     private var activityRef: WeakReference<Activity>? = null
     private var pendingLockActivationUntil: Long? = null
+    private var overlayRunning: Boolean = false
 
     init {
         refreshPermissions()
@@ -51,11 +60,18 @@ class LockScreenViewModel @Inject constructor(
         viewModelScope.launch {
             combine(
                 dataStoreManager.isLocked,
+                dataStoreManager.lockStartTimestamp,
                 dataStoreManager.lockEndTimestamp,
                 dataStoreManager.selectedDurationHours,
                 dataStoreManager.selectedDurationMinutes
-            ) { isLocked, lockEndTimestamp, selectedHours, selectedMinutes ->
-                LockPreferencesState(isLocked, lockEndTimestamp, selectedHours, selectedMinutes)
+            ) { isLocked, lockStartTimestamp, lockEndTimestamp, selectedHours, selectedMinutes ->
+                LockPreferencesState(
+                    isLocked,
+                    lockStartTimestamp,
+                    lockEndTimestamp,
+                    selectedHours,
+                    selectedMinutes
+                )
             }.collect { state ->
                 val (normalizedHours, normalizedMinutes) = normalizeDuration(
                     state.selectedHours,
@@ -105,11 +121,22 @@ class LockScreenViewModel @Inject constructor(
                     )
                 }
 
+                val shouldRunOverlay = effectiveIsLocked && countdownTarget != null
+
                 if (!effectiveIsLocked) {
                     countdownJob?.cancel()
                 } else if (countdownTarget != null) {
                     countdownJob?.cancel()
                     startCountdown(countdownTarget)
+                }
+
+                if (overlayRunning != shouldRunOverlay) {
+                    overlayRunning = shouldRunOverlay
+                    if (shouldRunOverlay) {
+                        OverlayLockService.start(appContext)
+                    } else {
+                        OverlayLockService.stop(appContext)
+                    }
                 }
             }
         }
@@ -141,9 +168,14 @@ class LockScreenViewModel @Inject constructor(
             Log.w(TAG, "Cannot start lock: missing permissions $permissions")
             return
         }
+        if (!ensureNotificationPermission(activity)) {
+            Log.w(TAG, "Notification permission request in-flight; postponing lock start")
+            return
+        }
         val selectedState = uiState.value
         val (hours, minutes) = normalizeDuration(selectedState.selectedHours, selectedState.selectedMinutes)
-        val lockEndTimestamp = System.currentTimeMillis() +
+        val lockStartTimestamp = System.currentTimeMillis()
+        val lockEndTimestamp = lockStartTimestamp +
             TimeUnit.HOURS.toMillis(hours.toLong()) +
             TimeUnit.MINUTES.toMillis(minutes.toLong())
         activityRef = activity?.let(::WeakReference)
@@ -158,7 +190,9 @@ class LockScreenViewModel @Inject constructor(
             )
         }
         viewModelScope.launch {
-            dataStoreManager.updateLockState(true, lockEndTimestamp)
+            dataStoreManager.updateLockState(true, lockStartTimestamp, lockEndTimestamp)
+            OverlayLockService.start(appContext)
+            overlayRunning = true
         }
     }
 
@@ -170,7 +204,9 @@ class LockScreenViewModel @Inject constructor(
             current.copy(isLocked = false, remainingMillis = 0L)
         }
         viewModelScope.launch {
-            dataStoreManager.updateLockState(false, null)
+            dataStoreManager.updateLockState(false, null, null)
+            OverlayLockService.stop(appContext)
+            overlayRunning = false
         }
     }
 
@@ -197,12 +233,35 @@ class LockScreenViewModel @Inject constructor(
         stopLock(activityRef?.get())
     }
 
+    private fun ensureNotificationPermission(activity: Activity?): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return true
+        }
+        val permissionState = ContextCompat.checkSelfPermission(
+            appContext,
+            android.Manifest.permission.POST_NOTIFICATIONS
+        )
+        if (permissionState == PackageManager.PERMISSION_GRANTED) {
+            return true
+        }
+        if (activity == null) {
+            return false
+        }
+        ActivityCompat.requestPermissions(
+            activity,
+            arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+            REQUEST_CODE_POST_NOTIFICATIONS
+        )
+        return false
+    }
+
     companion object {
         const val MIN_DURATION_HOURS = 0
         const val MAX_DURATION_HOURS = 72
         const val MINUTE_INCREMENT = 1
         private const val ONE_SECOND_MILLIS = 1_000L
         private const val TAG = "LockScreenViewModel"
+        private const val REQUEST_CODE_POST_NOTIFICATIONS = 1001
     }
 
     private fun normalizeDuration(hours: Int, minutes: Int): Pair<Int, Int> {
@@ -235,6 +294,7 @@ data class LockScreenUiState(
 
 private data class LockPreferencesState(
     val isLocked: Boolean,
+    val lockStartTimestamp: Long?,
     val lockEndTimestamp: Long?,
     val selectedHours: Int,
     val selectedMinutes: Int
