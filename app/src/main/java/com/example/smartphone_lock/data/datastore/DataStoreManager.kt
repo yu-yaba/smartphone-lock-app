@@ -22,6 +22,7 @@ class DataStoreManager @Inject constructor(
     private object Keys {
         val SELECTED_DURATION_HOURS = intPreferencesKey("selected_duration_hours")
         val SELECTED_DURATION_MINUTES = intPreferencesKey("selected_duration_minutes")
+        val LOCK_START_TIMESTAMP = longPreferencesKey("lock_start_timestamp")
         val LOCK_END_TIMESTAMP = longPreferencesKey("lock_end_timestamp")
         val IS_LOCKED = booleanPreferencesKey("is_locked")
     }
@@ -46,6 +47,10 @@ class DataStoreManager @Inject constructor(
         preferences[Keys.LOCK_END_TIMESTAMP]
     }
 
+    val lockStartTimestamp: Flow<Long?> = preferencesFlow.map { preferences ->
+        preferences[Keys.LOCK_START_TIMESTAMP]
+    }
+
     val isLocked: Flow<Boolean> = preferencesFlow.map { preferences ->
         preferences[Keys.IS_LOCKED] ?: false
     }
@@ -57,9 +62,18 @@ class DataStoreManager @Inject constructor(
         }
     }
 
-    suspend fun updateLockState(isLocked: Boolean, lockEndTimestamp: Long?) {
+    suspend fun updateLockState(
+        isLocked: Boolean,
+        lockStartTimestamp: Long?,
+        lockEndTimestamp: Long?
+    ) {
         dataStore.edit { preferences ->
             preferences[Keys.IS_LOCKED] = isLocked
+            if (lockStartTimestamp != null) {
+                preferences[Keys.LOCK_START_TIMESTAMP] = lockStartTimestamp
+            } else {
+                preferences.remove(Keys.LOCK_START_TIMESTAMP)
+            }
             if (lockEndTimestamp != null) {
                 preferences[Keys.LOCK_END_TIMESTAMP] = lockEndTimestamp
             } else {
@@ -71,8 +85,17 @@ class DataStoreManager @Inject constructor(
     suspend fun clearLockState() {
         dataStore.edit { preferences ->
             preferences.remove(Keys.IS_LOCKED)
+            preferences.remove(Keys.LOCK_START_TIMESTAMP)
             preferences.remove(Keys.LOCK_END_TIMESTAMP)
         }
+    }
+
+    val lockState: Flow<LockStatePreferences> = preferencesFlow.map { preferences ->
+        LockStatePreferences(
+            isLocked = preferences[Keys.IS_LOCKED] ?: false,
+            lockStartTimestamp = preferences[Keys.LOCK_START_TIMESTAMP],
+            lockEndTimestamp = preferences[Keys.LOCK_END_TIMESTAMP]
+        )
     }
 
     companion object {
@@ -80,3 +103,9 @@ class DataStoreManager @Inject constructor(
         const val DEFAULT_DURATION_MINUTES = 0
     }
 }
+
+data class LockStatePreferences(
+    val isLocked: Boolean,
+    val lockStartTimestamp: Long?,
+    val lockEndTimestamp: Long?
+)
