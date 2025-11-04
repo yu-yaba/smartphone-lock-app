@@ -29,4 +29,7 @@
     <string name="lock_screen_remaining_time_hours_minutes">残り %1$d時間%2$d分</string>
     <string name="lock_screen_remaining_time_minutes_seconds">残り %1$d分%2$d秒</string>
     <string name="lock_screen_remaining_time_seconds">残り %1$d秒</string>
+    <string name="overlay_service_notification_channel">集中モード</string>
+    <string name="overlay_service_notification_title">スマホをロック中</string>
+    <string name="overlay_service_notification_content">集中モードを実行中です</string>
 </resources>

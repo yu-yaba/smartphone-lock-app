@@ -1,13 +1,16 @@
 package com.example.smartphone_lock.ui.lock
 
 import android.app.Activity
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.smartphone_lock.data.datastore.DataStoreManager
 import com.example.smartphone_lock.data.repository.LockPermissionsRepository
 import com.example.smartphone_lock.model.LockPermissionState
+import com.example.smartphone_lock.service.OverlayLockService
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import java.lang.ref.WeakReference
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -25,7 +28,8 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class LockScreenViewModel @Inject constructor(
     private val lockPermissionsRepository: LockPermissionsRepository,
-    private val dataStoreManager: DataStoreManager
+    private val dataStoreManager: DataStoreManager,
+    @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
     val permissionState: StateFlow<LockPermissionState> = lockPermissionsRepository.permissionStateFlow
@@ -41,6 +45,7 @@ class LockScreenViewModel @Inject constructor(
     private var countdownJob: Job? = null
     private var activityRef: WeakReference<Activity>? = null
     private var pendingLockActivationUntil: Long? = null
+    private var overlayRunning: Boolean = false
 
     init {
         refreshPermissions()
@@ -51,11 +56,18 @@ class LockScreenViewModel @Inject constructor(
         viewModelScope.launch {
             combine(
                 dataStoreManager.isLocked,
+                dataStoreManager.lockStartTimestamp,
                 dataStoreManager.lockEndTimestamp,
                 dataStoreManager.selectedDurationHours,
                 dataStoreManager.selectedDurationMinutes
-            ) { isLocked, lockEndTimestamp, selectedHours, selectedMinutes ->
-                LockPreferencesState(isLocked, lockEndTimestamp, selectedHours, selectedMinutes)
+            ) { isLocked, lockStartTimestamp, lockEndTimestamp, selectedHours, selectedMinutes ->
+                LockPreferencesState(
+                    isLocked,
+                    lockStartTimestamp,
+                    lockEndTimestamp,
+                    selectedHours,
+                    selectedMinutes
+                )
             }.collect { state ->
                 val (normalizedHours, normalizedMinutes) = normalizeDuration(
                     state.selectedHours,
@@ -105,11 +117,22 @@ class LockScreenViewModel @Inject constructor(
                     )
                 }
 
+                val shouldRunOverlay = effectiveIsLocked && countdownTarget != null
+
                 if (!effectiveIsLocked) {
                     countdownJob?.cancel()
                 } else if (countdownTarget != null) {
                     countdownJob?.cancel()
                     startCountdown(countdownTarget)
+                }
+
+                if (overlayRunning != shouldRunOverlay) {
+                    overlayRunning = shouldRunOverlay
+                    if (shouldRunOverlay) {
+                        OverlayLockService.start(appContext)
+                    } else {
+                        OverlayLockService.stop(appContext)
+                    }
                 }
             }
         }
@@ -143,7 +166,8 @@ class LockScreenViewModel @Inject constructor(
         }
         val selectedState = uiState.value
         val (hours, minutes) = normalizeDuration(selectedState.selectedHours, selectedState.selectedMinutes)
-        val lockEndTimestamp = System.currentTimeMillis() +
+        val lockStartTimestamp = System.currentTimeMillis()
+        val lockEndTimestamp = lockStartTimestamp +
             TimeUnit.HOURS.toMillis(hours.toLong()) +
             TimeUnit.MINUTES.toMillis(minutes.toLong())
         activityRef = activity?.let(::WeakReference)
@@ -158,7 +182,11 @@ class LockScreenViewModel @Inject constructor(
             )
         }
         viewModelScope.launch {
-            dataStoreManager.updateLockState(true, lockEndTimestamp)
+            dataStoreManager.updateLockState(true, lockStartTimestamp, lockEndTimestamp)
+        }
+        if (!overlayRunning) {
+            OverlayLockService.start(appContext)
+            overlayRunning = true
         }
     }
 
@@ -170,7 +198,11 @@ class LockScreenViewModel @Inject constructor(
             current.copy(isLocked = false, remainingMillis = 0L)
         }
         viewModelScope.launch {
-            dataStoreManager.updateLockState(false, null)
+            dataStoreManager.updateLockState(false, null, null)
+        }
+        if (overlayRunning) {
+            OverlayLockService.stop(appContext)
+            overlayRunning = false
         }
     }
 
@@ -235,6 +267,7 @@ data class LockScreenUiState(
 
 private data class LockPreferencesState(
     val isLocked: Boolean,
+    val lockStartTimestamp: Long?,
     val lockEndTimestamp: Long?,
     val selectedHours: Int,
     val selectedMinutes: Int
