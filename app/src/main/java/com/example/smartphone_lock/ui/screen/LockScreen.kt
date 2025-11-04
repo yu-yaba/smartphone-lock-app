@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.smartphone_lock.R
 import com.example.smartphone_lock.ui.lock.LockScreenViewModel
+import com.example.smartphone_lock.util.formatLockRemainingTime
 import kotlin.math.abs
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -559,13 +560,8 @@ private fun NumberDial(
 
 @Composable
 private fun formatRemainingTime(remainingMillis: Long): String {
-    val totalSeconds = (remainingMillis / 1000L).coerceAtLeast(0)
-    val hours = (totalSeconds / 3600).toInt()
-    val minutes = ((totalSeconds % 3600) / 60).toInt()
-    val seconds = (totalSeconds % 60).toInt()
-    return when {
-        hours > 0 -> stringResource(id = R.string.lock_screen_remaining_time_hours_minutes, hours, minutes)
-        minutes > 0 -> stringResource(id = R.string.lock_screen_remaining_time_minutes_seconds, minutes, seconds)
-        else -> stringResource(id = R.string.lock_screen_remaining_time_seconds, seconds)
+    val context = LocalContext.current
+    return remember(remainingMillis, context) {
+        formatLockRemainingTime(context, remainingMillis)
     }
 }
