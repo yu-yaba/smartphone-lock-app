@@ -2,9 +2,13 @@ package com.example.smartphone_lock.ui.lock
 
 import android.app.Activity
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.example.smartphone_lock.data.datastore.DataStoreManager
 import com.example.smartphone_lock.data.repository.LockPermissionsRepository
 import com.example.smartphone_lock.model.LockPermissionState
@@ -164,6 +168,10 @@ class LockScreenViewModel @Inject constructor(
             Log.w(TAG, "Cannot start lock: missing permissions $permissions")
             return
         }
+        if (!ensureNotificationPermission(activity)) {
+            Log.w(TAG, "Notification permission request in-flight; postponing lock start")
+            return
+        }
         val selectedState = uiState.value
         val (hours, minutes) = normalizeDuration(selectedState.selectedHours, selectedState.selectedMinutes)
         val lockStartTimestamp = System.currentTimeMillis()
@@ -229,12 +237,35 @@ class LockScreenViewModel @Inject constructor(
         stopLock(activityRef?.get())
     }
 
+    private fun ensureNotificationPermission(activity: Activity?): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return true
+        }
+        val permissionState = ContextCompat.checkSelfPermission(
+            appContext,
+            android.Manifest.permission.POST_NOTIFICATIONS
+        )
+        if (permissionState == PackageManager.PERMISSION_GRANTED) {
+            return true
+        }
+        if (activity == null) {
+            return false
+        }
+        ActivityCompat.requestPermissions(
+            activity,
+            arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+            REQUEST_CODE_POST_NOTIFICATIONS
+        )
+        return false
+    }
+
     companion object {
         const val MIN_DURATION_HOURS = 0
         const val MAX_DURATION_HOURS = 72
         const val MINUTE_INCREMENT = 1
         private const val ONE_SECOND_MILLIS = 1_000L
         private const val TAG = "LockScreenViewModel"
+        private const val REQUEST_CODE_POST_NOTIFICATIONS = 1001
     }
 
     private fun normalizeDuration(hours: Int, minutes: Int): Pair<Int, Int> {
