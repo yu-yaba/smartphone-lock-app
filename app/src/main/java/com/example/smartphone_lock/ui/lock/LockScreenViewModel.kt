@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat
 import com.example.smartphone_lock.data.datastore.DataStoreManager
 import com.example.smartphone_lock.data.repository.LockPermissionsRepository
 import com.example.smartphone_lock.model.LockPermissionState
+import com.example.smartphone_lock.service.LockMonitorService
 import com.example.smartphone_lock.service.OverlayLockService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -133,9 +134,11 @@ class LockScreenViewModel @Inject constructor(
                 if (overlayRunning != shouldRunOverlay) {
                     overlayRunning = shouldRunOverlay
                     if (shouldRunOverlay) {
+                        LockMonitorService.start(appContext)
                         OverlayLockService.start(appContext)
                     } else {
                         OverlayLockService.stop(appContext)
+                        LockMonitorService.stop(appContext)
                     }
                 }
             }
@@ -191,6 +194,7 @@ class LockScreenViewModel @Inject constructor(
         }
         viewModelScope.launch {
             dataStoreManager.updateLockState(true, lockStartTimestamp, lockEndTimestamp)
+            LockMonitorService.start(appContext)
             OverlayLockService.start(appContext)
             overlayRunning = true
         }
@@ -206,6 +210,7 @@ class LockScreenViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.updateLockState(false, null, null)
             OverlayLockService.stop(appContext)
+            LockMonitorService.stop(appContext)
             overlayRunning = false
         }
     }
