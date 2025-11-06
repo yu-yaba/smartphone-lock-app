@@ -32,4 +32,7 @@
     <string name="overlay_service_notification_channel">集中モード</string>
     <string name="overlay_service_notification_title">スマホをロック中</string>
     <string name="overlay_service_notification_content">集中モードを実行中です</string>
+    <string name="lock_monitor_notification_channel">ロック監視</string>
+    <string name="lock_monitor_notification_title">使用状況を監視中</string>
+    <string name="lock_monitor_notification_content">集中モードを維持するために監視しています</string>
 </resources>
