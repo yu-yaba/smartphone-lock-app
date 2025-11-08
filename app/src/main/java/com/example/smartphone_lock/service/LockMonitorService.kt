@@ -114,16 +114,28 @@ class LockMonitorService : Service() {
             foregroundStarted = true
             return
         }
-        if (!hasPostNotificationPermission()) {
-            Log.w(TAG, "Notification permission missing; foreground without UI")
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasPostNotificationPermission()) {
+            Log.w(TAG, "Notification permission missing; defer foreground start")
+            return
         }
+
         val notification = buildNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+            foregroundStarted = true
+        } catch (securityException: SecurityException) {
+            Log.e(TAG, "Failed to enter foreground", securityException)
+            stopSelf()
         }
-        foregroundStarted = true
     }
 
     private fun buildNotification(): android.app.Notification {
@@ -200,7 +212,8 @@ class LockMonitorService : Service() {
 
         fun start(context: Context) {
             val intent = Intent(context, LockMonitorService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val canPostForegroundNotification = context.hasPostNotificationPermissionCompat()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && canPostForegroundNotification) {
                 ContextCompat.startForegroundService(context, intent)
             } else {
                 @Suppress("DEPRECATION")
@@ -220,11 +233,13 @@ class LockMonitorService : Service() {
         internal fun startIntent(context: Context): Intent = Intent(context, LockMonitorService::class.java)
     }
 
-    private fun hasPostNotificationPermission(): Boolean {
-        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-    }
+    private fun hasPostNotificationPermission(): Boolean = this.hasPostNotificationPermissionCompat()
+}
+
+private fun Context.hasPostNotificationPermissionCompat(): Boolean {
+    return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
 }
