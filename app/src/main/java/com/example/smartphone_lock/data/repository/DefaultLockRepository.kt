@@ -1,10 +1,13 @@
 package com.example.smartphone_lock.data.repository
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.provider.Telephony
 import android.telecom.TelecomManager
 import android.util.Log
 import androidx.annotation.VisibleForTesting
-import android.provider.Telephony
+import androidx.core.content.ContextCompat
 import com.example.smartphone_lock.data.datastore.DataStoreManager
 import com.example.smartphone_lock.data.datastore.LockStatePreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -99,10 +102,30 @@ class DefaultLockRepository @Inject constructor(
     }
 
     override fun refreshDynamicLists() {
-        val telecom = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
-        val defaultDialer = telecom?.defaultDialerPackage
-        val defaultSms = Telephony.Sms.getDefaultSmsPackage(context)
+        val defaultDialer = resolveDefaultDialerPackage()
+        val defaultSms = runCatching { Telephony.Sms.getDefaultSmsPackage(context) }
+            .onFailure { Log.w(TAG, "Failed to query default SMS package", it) }
+            .getOrNull()
         refreshDynamicLists(defaultDialer, defaultSms)
+    }
+
+    private fun resolveDefaultDialerPackage(): String? {
+        val telecom = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
+            ?: return null
+
+        val hasPhonePermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.READ_PHONE_STATE
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (!hasPhonePermission) {
+            Log.w(TAG, "READ_PHONE_STATE not granted; skipping default dialer lookup")
+            return null
+        }
+
+        return runCatching { telecom.defaultDialerPackage }
+            .onFailure { Log.w(TAG, "Failed to query default dialer package", it) }
+            .getOrNull()
     }
 
     @VisibleForTesting
