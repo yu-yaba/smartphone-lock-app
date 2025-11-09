@@ -23,4 +23,9 @@ interface LockRepository {
      * ホワイトリストに登録されたパッケージ名かを返す。
      */
     fun isWhitelisted(packageName: String): Boolean
+
+    /**
+     * 端末の既定ダイヤラ/SMS アプリなど、動的に許可すべきアプリ一覧を再評価する。
+     */
+    fun refreshDynamicLists()
 }
