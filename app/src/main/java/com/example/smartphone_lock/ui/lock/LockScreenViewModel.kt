@@ -11,6 +11,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.smartphone_lock.data.datastore.DataStoreManager
 import com.example.smartphone_lock.data.repository.LockPermissionsRepository
+import com.example.smartphone_lock.data.repository.LockRepository
 import com.example.smartphone_lock.model.LockPermissionState
 import com.example.smartphone_lock.service.LockMonitorService
 import com.example.smartphone_lock.service.OverlayLockService
@@ -34,6 +35,7 @@ import kotlinx.coroutines.launch
 class LockScreenViewModel @Inject constructor(
     private val lockPermissionsRepository: LockPermissionsRepository,
     private val dataStoreManager: DataStoreManager,
+    private val lockRepository: LockRepository,
     @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
@@ -175,6 +177,7 @@ class LockScreenViewModel @Inject constructor(
             Log.w(TAG, "Notification permission request in-flight; postponing lock start")
             return
         }
+        lockRepository.refreshDynamicLists()
         val selectedState = uiState.value
         val (hours, minutes) = normalizeDuration(selectedState.selectedHours, selectedState.selectedMinutes)
         val lockStartTimestamp = System.currentTimeMillis()

@@ -1,6 +1,7 @@
 package com.example.smartphone_lock.ui.screen
 
 import android.app.Activity
+import android.os.Build
 import android.view.MotionEvent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
