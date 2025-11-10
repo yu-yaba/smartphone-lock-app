@@ -12,17 +12,9 @@ interface LockRepository {
     val lockState: Flow<LockStatePreferences>
 
     /**
-     * 指定したパッケージ名を封鎖対象とするかを判定する。
-     *
-     * @param packageName 判定するパッケージ名
-     * @return true の場合は Overlay で封鎖すべきアプリ
+     * 設定アプリや SystemUI など、即座に自アプリへリダイレクトすべきパッケージか。
      */
-    fun shouldBlockPackage(packageName: String): Boolean
-
-    /**
-     * ホワイトリストに登録されたパッケージ名かを返す。
-     */
-    fun isWhitelisted(packageName: String): Boolean
+    fun shouldForceLockUi(packageName: String): Boolean
 
     /**
      * 端末の既定ダイヤラ/SMS アプリなど、動的に許可すべきアプリ一覧を再評価する。
