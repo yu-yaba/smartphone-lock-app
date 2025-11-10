@@ -87,7 +87,8 @@ MainActivity
 - ロック開始・解除「時刻」はクライアントローカルで管理（オフライン優先、同期必須ではない）。
 
 ### 5.5 抜け道封鎖ポリシー（2025/11/09 追加）
-- **設定アプリの強制オーバーレイ**: UsageStats で `com.android.settings` など設定系パッケージが前面に来た瞬間、Overlay を再描画して UI 操作を遮断し、時刻改ざん／権限剥奪の導線を物理的に塞ぐ。
+- **設定アプリの強制リダイレクト**: UsageStats で `com.android.settings` や `com.android.systemui`（通知シェード／コントロールセンター）が前面に来た瞬間、Overlay を再描画すると同時に `Intent.FLAG_ACTIVITY_NEW_TASK` 付きで本アプリを最前面に呼び戻す。1 秒間隔のデバウンサーで再描画を制限しつつ、ユーザー視点では常にロック UI が復帰する体験を保つ。
+- **SystemUI フォールバック監視**: 端末によっては UsageStats が `com.android.systemui` を通知しないため、`ActivityManager.runningAppProcesses` を 750ms 間隔でポーリングし SystemUI が `IMPORTANCE_FOREGROUND` に昇格した瞬間にも上記リダイレクトを実行する。コントロールセンターやクイック設定経由で設定アプリへ遷移する抜け道もこの経路で検知する。
 - **Overlay / 通知権限の必須化**: 初回起動時に 3 権限のうち Overlay/通知を必須として許可が完了するまで Lock 画面へ遷移させない。ロック中に権限が外れた場合もサービス側で検知して再許可を求める。
 - **再起動時の即復帰**: `RECEIVE_BOOT_COMPLETED` を受け取る Receiver で端末起動直後に `LockMonitorService`/`OverlayLockService` を再起動し、DataStore 上ロック状態なら即座にオーバーレイを再掲出する。
 - **既定ダイヤラ/SMS 以外のアプリを封鎖**: `TelecomManager`/`SmsManager` から取得した端末既定の通話・メッセージアプリのみホワイトリスト化し、その他アプリはすべて Overlay 対象にすることで電話・SMS 以外の操作を完全に遮断する。
@@ -136,8 +137,7 @@ MainActivity
 ---
 
 ## 9. 法的・配布ポリシー上の考慮
-- **Google Play ポリシー遵守**：非アクセシビリティ目的での Accessibility 利用は禁止。  
-  本アプリは Accessibility を利用せず、オーバーレイ / 使用状況 / 通知アクセスの各権限もガイドラインに沿って説明する方針。
+- **Google Play ポリシー遵守**：Overlay / UsageStats / Notification の 3 権限のみを利用し、Accessibility API やデバイス管理特権には依存しない。Foreground Service からのバックグラウンド起動が必要となるため、通知経由でユーザーにロック継続を明示し、ポリシー上の正当な利用ケース（集中モード）として扱う。
 - **データプライバシー**：収集は最小限（ユーザーID・設定値）。国外リージョン保管を明記。匿名運用を基本。
 
 ---
