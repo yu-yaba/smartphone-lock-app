@@ -20,8 +20,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -42,6 +42,7 @@ class DefaultLockRepository @Inject constructor(
     private val dynamicWhitelist = MutableStateFlow(emptySet<String>())
 
     private val baseWhitelist = DEFAULT_WHITELIST + context.packageName
+    private val redirectPackages = SettingsPackages.REDIRECT_TARGETS
 
     private val blacklistState: StateFlow<Set<String>> = customBlacklist
         .map { custom -> DEFAULT_BLACKLIST + custom }
@@ -77,6 +78,22 @@ class DefaultLockRepository @Inject constructor(
             Log.v(TAG, "Whitelisted package detected: $normalized")
         }
         return isAllowed
+    }
+
+    override fun isBlacklisted(packageName: String): Boolean {
+        val normalized = packageName.trim()
+        if (normalized.isEmpty()) return false
+        return blacklistState.value.contains(normalized)
+    }
+
+    override fun shouldForceLockUi(packageName: String): Boolean {
+        val normalized = packageName.trim()
+        if (normalized.isEmpty()) return false
+        val forceRedirect = redirectPackages.contains(normalized)
+        if (forceRedirect) {
+            Log.d(TAG, "Force redirect package detected: $normalized")
+        }
+        return forceRedirect
     }
 
     /**
@@ -153,21 +170,7 @@ class DefaultLockRepository @Inject constructor(
             "com.android.packageinstaller",
         )
 
-        private val SETTINGS_BLACKLIST = setOf(
-            "com.android.settings",
-            "com.android.permissioncontroller",
-            "com.google.android.permissioncontroller",
-            "com.samsung.android.app.settings",
-            "com.miui.securitycenter",
-            "com.coloros.safecenter",
-            "com.oppo.safe",
-            "com.vivo.settings",
-            "com.huawei.systemmanager",
-            "com.oneplus.security",
-            "com.realme.securitycenter",
-        )
-
-        private val DEFAULT_BLACKLIST = CORE_BLACKLIST + SETTINGS_BLACKLIST
+        private val DEFAULT_BLACKLIST = CORE_BLACKLIST + SettingsPackages.KNOWN
 
         private val DEFAULT_WHITELIST = setOf(
             "com.android.dialer",
