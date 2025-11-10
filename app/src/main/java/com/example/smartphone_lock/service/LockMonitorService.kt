@@ -48,9 +48,6 @@ class LockMonitorService : Service() {
     lateinit var lockRepository: LockRepository
 
     @Inject
-    lateinit var systemUiForegroundWatcher: SystemUiForegroundWatcher
-
-    @Inject
     lateinit var lockUiLauncher: LockUiLauncher
 
     private var serviceScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -105,45 +102,40 @@ class LockMonitorService : Service() {
             if (!isLocked) return@start
             val normalized = packageName.trim()
             if (normalized.isEmpty()) return@start
-            when {
-                lockRepository.shouldForceLockUi(normalized) -> {
-                    serviceScope.launch { handleForcedRedirect(normalized) }
-                }
-                lockRepository.isBlacklisted(normalized) -> {
-                    serviceScope.launch { handleBlacklistedPackage(normalized) }
-                }
-                lockRepository.shouldBlockPackage(normalized) -> {
-                    Log.d(TAG, "Blocked package in foreground: $normalized")
-                    overlayManager.show()
-                }
+            if (lockRepository.shouldForceLockUi(normalized)) {
+                val reason = resolveReasonLabel(normalized)
+                serviceScope.launch { handleForcedRedirect(normalized, reason) }
             }
         }
-
-        systemUiForegroundWatcher.start(serviceScope) watcher@{ packageName ->
-            if (!isLocked) return@watcher
-            serviceScope.launch { handleForcedRedirect(packageName) }
-        }
     }
 
-    private suspend fun handleBlacklistedPackage(packageName: String) {
+    private suspend fun handleBlacklistedPackage(packageName: String, reason: String) {
         val shouldForceOverlay = overlayThrottler.shouldTrigger(packageName)
         if (shouldForceOverlay) {
-            Log.d(TAG, "Force overlay for blacklisted package: $packageName")
+            Log.d(TAG, "Force overlay for package=$packageName reason=$reason")
             overlayManager.show()
         } else {
-            Log.v(TAG, "Skip overlay (debounced) for $packageName")
+            Log.v(TAG, "Skip overlay (debounced) for package=$packageName reason=$reason")
         }
     }
 
-    private suspend fun handleForcedRedirect(packageName: String) {
-        handleBlacklistedPackage(packageName)
+    private suspend fun handleForcedRedirect(packageName: String, reason: String) {
+        handleBlacklistedPackage(packageName, reason)
         val shouldLaunch = lockUiRedirectThrottler.shouldTrigger(packageName)
         if (shouldLaunch) {
-            Log.d(TAG, "Launching lock UI for high-priority package: $packageName")
+            Log.d(TAG, "Launching lock UI for package=$packageName reason=$reason")
             lockUiLauncher.bringToFront(packageName)
         } else {
-            Log.v(TAG, "Skip lock UI launch (debounced) for $packageName")
+            Log.v(TAG, "Skip lock UI launch (debounced) for package=$packageName reason=$reason")
         }
+    }
+
+    private fun resolveReasonLabel(packageName: String): String {
+        val normalized = packageName.trim()
+        if (normalized.contains("permissioncontroller")) {
+            return "permission_controller"
+        }
+        return "settings"
     }
 
     @VisibleForTesting
