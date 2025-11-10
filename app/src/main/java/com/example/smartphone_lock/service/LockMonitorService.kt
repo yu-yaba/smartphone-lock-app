@@ -47,6 +47,12 @@ class LockMonitorService : Service() {
     @Inject
     lateinit var lockRepository: LockRepository
 
+    @Inject
+    lateinit var systemUiForegroundWatcher: SystemUiForegroundWatcher
+
+    @Inject
+    lateinit var lockUiLauncher: LockUiLauncher
+
     private var serviceScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private var lockStateJob: Job? = null
@@ -54,6 +60,8 @@ class LockMonitorService : Service() {
     @Volatile
     private var isLocked: Boolean = false
     private var foregroundStarted = false
+    private val overlayThrottler = PackageEventThrottler(BLACKLIST_OVERLAY_DEBOUNCE_MILLIS)
+    private val lockUiRedirectThrottler = PackageEventThrottler(LOCK_UI_REDIRECT_DEBOUNCE_MILLIS)
 
     override fun onCreate() {
         super.onCreate()
@@ -95,10 +103,46 @@ class LockMonitorService : Service() {
         }
         foregroundAppMonitor.start(serviceScope) { packageName ->
             if (!isLocked) return@start
-            if (lockRepository.shouldBlockPackage(packageName)) {
-                Log.d(TAG, "Blocked package in foreground: $packageName")
-                overlayManager.show()
+            val normalized = packageName.trim()
+            if (normalized.isEmpty()) return@start
+            when {
+                lockRepository.shouldForceLockUi(normalized) -> {
+                    serviceScope.launch { handleForcedRedirect(normalized) }
+                }
+                lockRepository.isBlacklisted(normalized) -> {
+                    serviceScope.launch { handleBlacklistedPackage(normalized) }
+                }
+                lockRepository.shouldBlockPackage(normalized) -> {
+                    Log.d(TAG, "Blocked package in foreground: $normalized")
+                    overlayManager.show()
+                }
             }
+        }
+
+        systemUiForegroundWatcher.start(serviceScope) watcher@{ packageName ->
+            if (!isLocked) return@watcher
+            serviceScope.launch { handleForcedRedirect(packageName) }
+        }
+    }
+
+    private suspend fun handleBlacklistedPackage(packageName: String) {
+        val shouldForceOverlay = overlayThrottler.shouldTrigger(packageName)
+        if (shouldForceOverlay) {
+            Log.d(TAG, "Force overlay for blacklisted package: $packageName")
+            overlayManager.show()
+        } else {
+            Log.v(TAG, "Skip overlay (debounced) for $packageName")
+        }
+    }
+
+    private suspend fun handleForcedRedirect(packageName: String) {
+        handleBlacklistedPackage(packageName)
+        val shouldLaunch = lockUiRedirectThrottler.shouldTrigger(packageName)
+        if (shouldLaunch) {
+            Log.d(TAG, "Launching lock UI for high-priority package: $packageName")
+            lockUiLauncher.bringToFront(packageName)
+        } else {
+            Log.v(TAG, "Skip lock UI launch (debounced) for $packageName")
         }
     }
 
@@ -209,6 +253,8 @@ class LockMonitorService : Service() {
         private const val NOTIFICATION_CHANNEL_ID = "lock_monitor"
         private const val RESTART_REQUEST_CODE = 9001
         private const val RESTART_DELAY_MILLIS = 1_000L
+        private const val BLACKLIST_OVERLAY_DEBOUNCE_MILLIS = 1_000L
+        private const val LOCK_UI_REDIRECT_DEBOUNCE_MILLIS = 1_500L
 
         fun start(context: Context) {
             val intent = Intent(context, LockMonitorService::class.java)
