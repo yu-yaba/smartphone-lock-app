@@ -25,6 +25,16 @@ interface LockRepository {
     fun isWhitelisted(packageName: String): Boolean
 
     /**
+     * ブラックリスト（設定アプリ等）に該当するかを返す。
+     */
+    fun isBlacklisted(packageName: String): Boolean
+
+    /**
+     * 設定アプリや SystemUI など、即座に自アプリへリダイレクトすべきパッケージか。
+     */
+    fun shouldForceLockUi(packageName: String): Boolean
+
+    /**
      * 端末の既定ダイヤラ/SMS アプリなど、動的に許可すべきアプリ一覧を再評価する。
      */
     fun refreshDynamicLists()
