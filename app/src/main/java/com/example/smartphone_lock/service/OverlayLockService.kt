@@ -53,6 +53,7 @@ class OverlayLockService : Service() {
     private var lockStateJob: Job? = null
     private var countdownJob: Job? = null
     private var foregroundStarted = false
+    private var latestLockState: LockStatePreferences? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -83,11 +84,14 @@ class OverlayLockService : Service() {
             return
         }
         ensureForeground()
-        if (lockStateJob != null) return
-        lockStateJob = serviceScope.launch {
-            dataStoreManager.lockState.collectLatest { state ->
-                handleLockState(state)
+        if (lockStateJob == null) {
+            lockStateJob = serviceScope.launch {
+                dataStoreManager.lockState.collectLatest { state ->
+                    handleLockState(state)
+                }
             }
+        } else {
+            latestLockState?.let { handleLockState(it) }
         }
     }
 
@@ -96,6 +100,7 @@ class OverlayLockService : Service() {
         countdownJob = null
         lockStateJob?.cancel()
         lockStateJob = null
+        latestLockState = null
         hideOverlay()
         if (foregroundStarted) {
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -107,6 +112,7 @@ class OverlayLockService : Service() {
     }
 
     private fun handleLockState(state: LockStatePreferences) {
+        latestLockState = state
         if (state.isLocked && state.lockEndTimestamp != null) {
             ensureForeground()
             showOverlayIfNeeded()
