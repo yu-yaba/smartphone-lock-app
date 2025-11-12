@@ -13,6 +13,7 @@ import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.os.Build
 import android.os.IBinder
+import android.os.UserManager
 import android.provider.Settings
 import android.util.Log
 import android.util.TypedValue
@@ -51,6 +52,7 @@ class OverlayLockService : Service() {
     private var overlayContainer: FrameLayout? = null
     private var countdownTextView: TextView? = null
     private var lockStateJob: Job? = null
+    private var deviceProtectedLockStateJob: Job? = null
     private var countdownJob: Job? = null
     private var foregroundStarted = false
     private var latestLockState: LockStatePreferences? = null
@@ -84,6 +86,7 @@ class OverlayLockService : Service() {
             return
         }
         ensureForeground()
+        startDeviceProtectedLockCollection()
         if (lockStateJob == null) {
             lockStateJob = serviceScope.launch {
                 dataStoreManager.lockState.collectLatest { state ->
@@ -100,6 +103,8 @@ class OverlayLockService : Service() {
         countdownJob = null
         lockStateJob?.cancel()
         lockStateJob = null
+        deviceProtectedLockStateJob?.cancel()
+        deviceProtectedLockStateJob = null
         latestLockState = null
         hideOverlay()
         if (foregroundStarted) {
@@ -108,6 +113,30 @@ class OverlayLockService : Service() {
         }
         if (clearState) {
             stopSelf()
+        }
+    }
+
+    private fun startDeviceProtectedLockCollection() {
+        if (!supportsDeviceProtectedStorage()) return
+        if (isUserUnlocked()) {
+            deviceProtectedLockStateJob?.cancel()
+            deviceProtectedLockStateJob = null
+            return
+        }
+        if (deviceProtectedLockStateJob != null) return
+        deviceProtectedLockStateJob = serviceScope.launch {
+            dataStoreManager.deviceProtectedLockState.collectLatest { state ->
+                if (isUserUnlocked()) {
+                    cancel("User unlocked; DP overlay updates no longer needed")
+                } else {
+                    val snapshot = LockStatePreferences(
+                        isLocked = state.isLocked,
+                        lockStartTimestamp = state.lockStartTimestamp,
+                        lockEndTimestamp = state.lockEndTimestamp
+                    )
+                    handleLockState(snapshot)
+                }
+            }
         }
     }
 
@@ -195,21 +224,27 @@ class OverlayLockService : Service() {
 
     private fun ensureForeground() {
         if (foregroundStarted) return
-        if (!hasPostNotificationPermission()) {
-            Log.w(TAG, "Notification permission missing; running without foreground notification")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasPostNotificationPermission()) {
+            Log.w(TAG, "Notification permission missing; running without foreground")
+            foregroundStarted = true
             return
         }
         val notification = buildNotification(getString(R.string.overlay_service_notification_content))
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+            foregroundStarted = true
+        } catch (securityException: SecurityException) {
+            Log.e(TAG, "Failed to enter foreground", securityException)
+            stopSelf()
         }
-        foregroundStarted = true
     }
 
     private fun buildNotification(contentText: String) = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
@@ -269,12 +304,18 @@ class OverlayLockService : Service() {
             val intent = Intent(context, OverlayLockService::class.java).apply {
                 action = ACTION_START
             }
-            val hasNotificationPermission = hasPostNotificationPermission(context)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && hasNotificationPermission) {
+            val canStartForeground =
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    hasPostNotificationPermission(context)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && canStartForeground) {
                 ContextCompat.startForegroundService(context, intent)
             } else {
-                @Suppress("DEPRECATION")
-                context.startService(intent)
+                try {
+                    @Suppress("DEPRECATION")
+                    context.startService(intent)
+                } catch (illegalStateException: IllegalStateException) {
+                    Log.e(TAG, "Unable to start overlay service in background", illegalStateException)
+                }
             }
         }
 
@@ -290,5 +331,14 @@ class OverlayLockService : Service() {
                     Manifest.permission.POST_NOTIFICATIONS
                 ) == PackageManager.PERMISSION_GRANTED
         }
+    }
+
+    private fun supportsDeviceProtectedStorage(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
+
+    private fun isUserUnlocked(): Boolean {
+        if (!supportsDeviceProtectedStorage()) return true
+        val userManager = getSystemService(UserManager::class.java)
+        return userManager?.isUserUnlocked ?: true
     }
 }
