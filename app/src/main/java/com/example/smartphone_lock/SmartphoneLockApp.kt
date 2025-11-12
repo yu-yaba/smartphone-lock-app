@@ -14,11 +14,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.smartphone_lock.navigation.AppDestination
 import com.example.smartphone_lock.ui.lock.LockScreenViewModel
-import com.example.smartphone_lock.ui.screen.AuthScreen
-import com.example.smartphone_lock.ui.screen.CompleteScreen
-import com.example.smartphone_lock.ui.screen.HomeScreen
 import com.example.smartphone_lock.ui.screen.LockScreen
-import com.example.smartphone_lock.ui.screen.LockSettingScreen
 import com.example.smartphone_lock.ui.screen.PermissionIntroScreen
 
 @Composable
@@ -58,62 +54,6 @@ fun SmartphoneLockApp(
             composable(AppDestination.Lock.route) {
                 LockScreen(lockViewModel = lockViewModel)
             }
-
-            composable(AppDestination.Home.route) {
-                HomeScreen(
-                    onNavigateToLockSetting = {
-                        navController.navigateAndPopUpToRoot(AppDestination.LockSetting.route)
-                    },
-                    onNavigateToAuth = {
-                        navController.navigateAndPopUpToRoot(AppDestination.Auth.route)
-                    },
-                    onNavigateToComplete = {
-                        navController.navigateAndPopUpToRoot(AppDestination.Complete.route)
-                    }
-                )
-            }
-
-            composable(AppDestination.LockSetting.route) {
-                LockSettingScreen(
-                    onNavigateToHome = {
-                        navController.navigateAndPopUpToRoot(AppDestination.Home.route)
-                    },
-                    onNavigateToAuth = {
-                        navController.navigateAndPopUpToRoot(AppDestination.Auth.route)
-                    },
-                    onNavigateToComplete = {
-                        navController.navigateAndPopUpToRoot(AppDestination.Complete.route)
-                    }
-                )
-            }
-
-            composable(AppDestination.Auth.route) {
-                AuthScreen(
-                    onNavigateToHome = {
-                        navController.navigateAndPopUpToRoot(AppDestination.Home.route)
-                    },
-                    onNavigateToLockSetting = {
-                        navController.navigateAndPopUpToRoot(AppDestination.LockSetting.route)
-                    },
-                    onNavigateToComplete = {
-                        navController.navigateAndPopUpToRoot(AppDestination.Complete.route)
-                    }
-                )
-            }
-
-            composable(AppDestination.Complete.route) {
-                CompleteScreen(
-                    onNavigateToHome = {
-                        navController.navigateAndPopUpToRoot(AppDestination.Home.route)
-                    },
-                    onNavigateToLockSetting = {
-                        navController.navigateAndPopUpToRoot(AppDestination.LockSetting.route)
-                    },
-                    onNavigateToAuth = {
-                        navController.navigateAndPopUpToRoot(AppDestination.Auth.route)
-                    }
-                )
-            }
         }
     }
 }
@@ -131,17 +71,6 @@ internal fun determinePermissionDestination(
         target
     } else {
         null
-    }
-}
-
-private fun androidx.navigation.NavController.navigateAndPopUpToRoot(route: String) {
-    navigate(route) {
-        launchSingleTop = true
-        popUpTo(graph.startDestinationId) {
-            inclusive = false
-            saveState = false
-        }
-        restoreState = false
     }
 }
 
