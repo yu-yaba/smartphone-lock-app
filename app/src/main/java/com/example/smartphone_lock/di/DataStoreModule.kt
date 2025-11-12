@@ -20,14 +20,30 @@ import javax.inject.Singleton
 object DataStoreModule {
 
     private const val DATA_STORE_NAME = "lock_preferences"
+    private const val DEVICE_PROTECTED_DATA_STORE_NAME = "lock_preferences_device_protected"
 
     @Provides
     @Singleton
-    fun providePreferencesDataStore(
+    @CredentialEncryptedDataStore
+    fun provideCredentialEncryptedDataStore(
         @ApplicationContext context: Context
     ): DataStore<Preferences> = PreferenceDataStoreFactory.create(
         scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     ) {
         context.preferencesDataStoreFile(DATA_STORE_NAME)
+    }
+
+    @Provides
+    @Singleton
+    @DeviceProtectedDataStore
+    fun provideDeviceProtectedDataStore(
+        @ApplicationContext context: Context
+    ): DataStore<Preferences> {
+        val deviceProtectedContext = context.createDeviceProtectedStorageContext()
+        return PreferenceDataStoreFactory.create(
+            scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        ) {
+            deviceProtectedContext.preferencesDataStoreFile(DEVICE_PROTECTED_DATA_STORE_NAME)
+        }
     }
 }
