@@ -179,6 +179,12 @@ class LockMonitorService : Service() {
             return
         }
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasPostNotificationPermission()) {
+            Log.w(TAG, "Notification permission missing; running monitor without foreground")
+            foregroundStarted = true
+            return
+        }
+
         val notification = buildNotification()
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -273,11 +279,18 @@ class LockMonitorService : Service() {
 
         fun start(context: Context) {
             val intent = Intent(context, LockMonitorService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val canStartForeground =
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    context.hasPostNotificationPermissionCompat()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && canStartForeground) {
                 ContextCompat.startForegroundService(context, intent)
             } else {
-                @Suppress("DEPRECATION")
-                context.startService(intent)
+                try {
+                    @Suppress("DEPRECATION")
+                    context.startService(intent)
+                } catch (illegalStateException: IllegalStateException) {
+                    Log.e(TAG, "Unable to start lock monitor service in background", illegalStateException)
+                }
             }
         }
 
@@ -300,5 +313,13 @@ class LockMonitorService : Service() {
         if (!supportsDeviceProtectedStorage()) return true
         val userManager = getSystemService(UserManager::class.java)
         return userManager?.isUserUnlocked ?: true
+    }
+
+    private fun Context.hasPostNotificationPermissionCompat(): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
     }
 }
