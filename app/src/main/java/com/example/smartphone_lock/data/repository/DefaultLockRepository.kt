@@ -1,6 +1,7 @@
 package com.example.smartphone_lock.data.repository
 
 import com.example.smartphone_lock.data.datastore.DataStoreManager
+import com.example.smartphone_lock.data.datastore.DeviceProtectedLockStatePreferences
 import com.example.smartphone_lock.data.datastore.LockStatePreferences
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -15,6 +16,9 @@ class DefaultLockRepository @Inject constructor(
 ) : LockRepository {
 
     override val lockState: Flow<LockStatePreferences> = dataStoreManager.lockState
+
+    override val deviceProtectedLockState: Flow<DeviceProtectedLockStatePreferences> =
+        dataStoreManager.deviceProtectedLockState
 
     override fun shouldForceLockUi(packageName: String): Boolean {
         val normalized = packageName.trim()

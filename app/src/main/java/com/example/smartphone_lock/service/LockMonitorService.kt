@@ -6,15 +6,14 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
-import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import android.os.SystemClock
+import android.os.UserManager
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.annotation.VisibleForTesting
@@ -53,6 +52,7 @@ class LockMonitorService : Service() {
     private var serviceScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private var lockStateJob: Job? = null
+    private var deviceProtectedLockStateJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
     @Volatile
     private var isLocked: Boolean = false
@@ -79,6 +79,7 @@ class LockMonitorService : Service() {
         serviceScope.cancel()
         releaseWakeLock()
         lockStateJob = null
+        deviceProtectedLockStateJob = null
         foregroundStarted = false
     }
 
@@ -88,16 +89,8 @@ class LockMonitorService : Service() {
     }
 
     private fun startMonitoring() {
-        if (lockStateJob?.isActive != true) {
-            lockStateJob = serviceScope.launch {
-                lockRepository.lockState.collectLatest { state ->
-                    isLocked = state.isLocked
-                    if (state.isLocked) {
-                        overlayManager.show()
-                    }
-                }
-            }
-        }
+        ensureCredentialEncryptedMonitoring()
+        startDeviceProtectedMonitoringIfNeeded()
         foregroundAppMonitor.start(serviceScope) { packageName ->
             if (!isLocked) return@start
             val normalized = packageName.trim()
@@ -106,6 +99,41 @@ class LockMonitorService : Service() {
                 val reason = resolveReasonLabel(normalized)
                 serviceScope.launch { handleForcedRedirect(normalized, reason) }
             }
+        }
+    }
+
+    private fun ensureCredentialEncryptedMonitoring() {
+        if (lockStateJob?.isActive == true) return
+        lockStateJob = serviceScope.launch {
+            lockRepository.lockState.collectLatest { state ->
+                updateCurrentLockState(state.isLocked)
+            }
+        }
+    }
+
+    private fun startDeviceProtectedMonitoringIfNeeded() {
+        if (!supportsDeviceProtectedStorage()) return
+        if (isUserUnlocked()) {
+            deviceProtectedLockStateJob?.cancel()
+            deviceProtectedLockStateJob = null
+            return
+        }
+        if (deviceProtectedLockStateJob?.isActive == true) return
+        deviceProtectedLockStateJob = serviceScope.launch {
+            lockRepository.deviceProtectedLockState.collectLatest { state ->
+                if (isUserUnlocked()) {
+                    cancel("User unlocked; DP monitoring no longer needed")
+                } else {
+                    updateCurrentLockState(state.isLocked)
+                }
+            }
+        }
+    }
+
+    private fun updateCurrentLockState(nextState: Boolean) {
+        isLocked = nextState
+        if (nextState) {
+            overlayManager.show()
         }
     }
 
@@ -152,7 +180,8 @@ class LockMonitorService : Service() {
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasPostNotificationPermission()) {
-            Log.w(TAG, "Notification permission missing; defer foreground start")
+            Log.w(TAG, "Notification permission missing; running monitor without foreground")
+            foregroundStarted = true
             return
         }
 
@@ -250,12 +279,18 @@ class LockMonitorService : Service() {
 
         fun start(context: Context) {
             val intent = Intent(context, LockMonitorService::class.java)
-            val canPostForegroundNotification = context.hasPostNotificationPermissionCompat()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && canPostForegroundNotification) {
+            val canStartForeground =
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    context.hasPostNotificationPermissionCompat()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && canStartForeground) {
                 ContextCompat.startForegroundService(context, intent)
             } else {
-                @Suppress("DEPRECATION")
-                context.startService(intent)
+                try {
+                    @Suppress("DEPRECATION")
+                    context.startService(intent)
+                } catch (illegalStateException: IllegalStateException) {
+                    Log.e(TAG, "Unable to start lock monitor service in background", illegalStateException)
+                }
             }
         }
 
@@ -271,13 +306,20 @@ class LockMonitorService : Service() {
         internal fun startIntent(context: Context): Intent = Intent(context, LockMonitorService::class.java)
     }
 
-    private fun hasPostNotificationPermission(): Boolean = this.hasPostNotificationPermissionCompat()
-}
+    private fun supportsDeviceProtectedStorage(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
 
-private fun Context.hasPostNotificationPermissionCompat(): Boolean {
-    return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-        ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.POST_NOTIFICATIONS
-        ) == PackageManager.PERMISSION_GRANTED
+    private fun isUserUnlocked(): Boolean {
+        if (!supportsDeviceProtectedStorage()) return true
+        val userManager = getSystemService(UserManager::class.java)
+        return userManager?.isUserUnlocked ?: true
+    }
+
+    private fun Context.hasPostNotificationPermissionCompat(): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+    }
 }
