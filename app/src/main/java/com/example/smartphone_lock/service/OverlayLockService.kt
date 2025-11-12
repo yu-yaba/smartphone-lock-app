@@ -224,6 +224,11 @@ class OverlayLockService : Service() {
 
     private fun ensureForeground() {
         if (foregroundStarted) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasPostNotificationPermission()) {
+            Log.w(TAG, "Notification permission missing; running without foreground")
+            foregroundStarted = true
+            return
+        }
         val notification = buildNotification(getString(R.string.overlay_service_notification_content))
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -299,11 +304,18 @@ class OverlayLockService : Service() {
             val intent = Intent(context, OverlayLockService::class.java).apply {
                 action = ACTION_START
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val canStartForeground =
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    hasPostNotificationPermission(context)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && canStartForeground) {
                 ContextCompat.startForegroundService(context, intent)
             } else {
-                @Suppress("DEPRECATION")
-                context.startService(intent)
+                try {
+                    @Suppress("DEPRECATION")
+                    context.startService(intent)
+                } catch (illegalStateException: IllegalStateException) {
+                    Log.e(TAG, "Unable to start overlay service in background", illegalStateException)
+                }
             }
         }
 
