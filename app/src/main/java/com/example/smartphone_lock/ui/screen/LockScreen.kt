@@ -198,7 +198,7 @@ fun LockScreen(
 
             AnimatedVisibility(visible = uiState.isLocked) {
                 OutlinedButton(
-                    onClick = { lockViewModel.stopLock(activity) },
+                    onClick = { lockViewModel.stopLock() },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 16.dp),

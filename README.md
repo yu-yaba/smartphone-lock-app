@@ -1,28 +1,29 @@
-# スマホ依存防止アプリ README（v1.4）
+# スマホ依存防止アプリ README（v1.5）
 
 ---
 
 ## 1. 概要
-本アプリはスマホ依存症の克服を支援する **完全ロック型集中モード** を提供する。Lock Task Mode や Device Owner には頼らず、以下の 3 権限（オーバーレイ／使用状況アクセス／通知アクセス）を組み合わせたソフトロックでユーザー操作を封じる。UI は Jetpack Compose（黒 × 黄色テーマ）で実装し、Android 11 (API 30) 以降をサポートする。詳細なロードマップと評価対象の技術リストは常に [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) を参照すること。
+本アプリはスマホ依存症の克服を支援する **完全ロック型集中モード** を提供する。Lock Task Mode や Device Owner には頼らず、以下の 3 権限（オーバーレイ／使用状況アクセス／通知アクセス）を組み合わせたソフトロックでユーザー操作を封じる。UI は Jetpack Compose（黒 × 黄色テーマ）で実装し、Android 11 (API 30) 以降をサポートする。詳細なロードマップと評価対象の技術リストは常に [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) を参照すること。  
+Supabase 連携は現状オプション扱いで、URL / Key が未設定でもビルド・起動可能（クライアントは生成されず、ログのみ出力）。
 
 - **UI**: `LockScreen` のダイヤルで 1〜72 時間を設定し、残り時間のみを大型表示。
 - **状態管理**: `LockScreenViewModel` + `DataStoreManager` + `DirectBootLockStateStore` でロック状態を多層保存し、再起動後も復帰。
 - **サービス構成**: `OverlayLockService` がカウントダウン付きオーバーレイを描画し、`LockMonitorService`（Foreground + UsageStats監視）が設定アプリ等を検知して即座に UI を取り戻す。
-- **構成管理**: Supabase URL/Key を `local.properties` > BuildConfig 経由で注入し、`SupabaseModule` でクライアントを初期化（API フローは未実装）。
+- **構成管理**: Supabase URL/Key を `local.properties` > BuildConfig 経由で渡せば `SupabaseModule` がクライアントを初期化。未設定でも動作し、ログのみ出力してスキップ（API フローは未実装）。
 
 ---
 
-## 2. 現在の実装スナップショット（2025/11/12 時点）
+## 2. 現在の実装スナップショット（2025/11/22 時点）
 | フェーズ | ステータス | 現状ハイライト | 次のアクション |
 |---------|------------|----------------|----------------|
 | 0. 基盤整備 | 🟢 完了 | Compose / Hilt / Navigation の土台を `gradle/libs.versions.toml` と `app/build.gradle.kts` に統合。`./gradlew assembleDebug` が安定。 | Lint / Test の CI 自動化（任意）。 |
-| 1. Supabase 設定 | 🟢 完了 | BuildConfig から Supabase URL / Keys を渡し、`SupabaseModule`＋`SmartphoneLockApplication` で初期化。 | 認証 UI / API 呼び出しの実装。 |
+| 1. Supabase 設定 | 🟡 任意・無効化可 | BuildConfig から URL / Key を渡せば `SupabaseModule` でクライアント生成。未設定時は `null` を DI しログのみでスキップ。 | 実際の API 実装を行う場合に設定を投入。 |
 | 2. 3 権限導入 | 🟢 完了 | `PermissionIntroScreen` と `DefaultLockPermissionsRepository` が Overlay / Usage / Notification を監視し、未許可時は権限画面を強制表示。 | ロック中に権限が剥奪された際の復帰 UX。 |
 | 3. ロック UI + Overlay | 🟢 完了 | `LockScreen` ダイヤル UI、`LockScreenViewModel` の DataStore 連携、`OverlayLockService` のフルスクリーン表示と Direct Boot 保存。 | Overlay 文言／アクセシビリティ調整、Alarm 連携へ布石。 |
 | 4. Foreground 監視 | 🟡 一部 | `LockMonitorService` + `UsageWatcher` が設定系パッケージを検知し `OverlayManager`/`LockUiLauncher` を発火。`PackageEventThrottler` でデバウンス。 | SystemUI / Play / Assistant などブラックリスト拡張とフォールバック監視。 |
 | 5. 通知ブロック | ⚪ 未着手 | `LockNotificationListenerService` を Manifest 登録のみ。 | 通知カテゴリ判定→ `cancelNotification`、通知経由の抜け道封鎖。 |
 | 6. AlarmManager 連携 | 🟡 一部 | `BootCompletedReceiver` と Direct Boot 二層保存、`LockMonitorService` の自己再起動 Alarm で復帰。 | `setExactAndAllowWhileIdle()` / WorkManager ベースの解除スケジュールと `SCHEDULE_EXACT_ALARM` 誘導。 |
-| 7. テスト & QA | ⚪ 未着手 | サンプルテストのみ。 | ViewModel / Repository / Service の単体テスト、権限〜ロックの UI テスト、再起動手動検証。 |
+| 7. テスト & QA | ⚪ 未着手 | テンプレートテストを削除済み（現在テストゼロ）。 | ViewModel / Repository / Service の単体テスト、権限〜ロックの UI テスト、再起動手動検証。 |
 | 8. IaC & リリース | ⚪ 未着手 | Terraform / 配布物なし。 | Supabase IaC、Play β 提出物、利用規約・プライバシー整備。 |
 
 ---
@@ -46,9 +47,9 @@
 - `BootCompletedReceiver` は `ACTION_BOOT_COMPLETED / LOCKED_BOOT_COMPLETED / USER_UNLOCKED` を受け、保存先（CE or DP）を切り替えつつロック状態を読み出し、必要なら `LockMonitorService` と `OverlayLockService` を再スタートする。
 - `DirectBootLockStateStore` は Device Protected Storage 上の `SharedPreferences` でロック状態を即時同期し、ユーザー未解錠でもカウントダウンが継続できる。
 
-### 3.5 Supabase 構成
-- `SupabaseConfigRepository` が `local.properties` の `SUPABASE_URL` / `SUPABASE_ANON_KEY` を読み込み、`SupabaseModule` で `SupabaseClient` を作成。`MainActivity` で DI が正しく初期化されているかデバッグチェックを行う。
-- Supabase Auth や API 呼び出しは未着手のため、README 更新後も `IMPLEMENTATION_PLAN.md` のフェーズ 1 以降を参照して要件を擦り合わせること。
+### 3.5 Supabase 構成（現在は任意）
+- `SupabaseConfigRepository` が `local.properties` の `SUPABASE_URL` / `SUPABASE_ANON_KEY` を読み込み、`SupabaseModule` が設定が揃っていれば `SupabaseClient` を生成。未設定なら `null` を返し、アプリは Supabase なしで動作。
+- Supabase Auth / API 呼び出しは未実装。将来導入時に設定を追加すれば復帰できる。
 
 ---
 
@@ -60,8 +61,8 @@
 | `app/src/main/java/com/example/smartphone_lock/service` | `OverlayLockService`, `LockMonitorService`, `UsageWatcher`, `LockUiLauncher`, `PackageEventThrottler` 等のサービス群。 |
 | `app/src/main/java/com/example/smartphone_lock/data/datastore` | `DataStoreManager`, `DirectBootLockStateStore`, デバイス保護領域のプリファレンス。 |
 | `app/src/main/java/com/example/smartphone_lock/data/repository` | Lock/Permission リポジトリ、`SettingsPackages` 定義。 |
-| `app/src/main/java/com/example/smartphone_lock/config` | アプリ / Supabase 設定モデルとリポジトリ。 |
-| `app/src/main/java/com/example/smartphone_lock/di` | Hilt Module 群（Config / DataStore / Repository / Service / Supabase）。 |
+| `app/src/main/java/com/example/smartphone_lock/config` | Supabase 設定モデルとリポジトリ（未設定ならクライアント非生成）。 |
+| `app/src/main/java/com/example/smartphone_lock/di` | Hilt Module 群（DataStore / Repository / Service / Supabase）。 |
 | `app/src/main/java/com/example/smartphone_lock/navigation` | `AppDestination` など NavHost 用定義。 |
 | `app/src/main/java/com/example/smartphone_lock/receiver` | `BootCompletedReceiver`。 |
 | `app/src/main/res` | Strings / Colors / Themes（黒 × 黄色）と権限文言。 |
@@ -83,13 +84,13 @@
 - Android Studio Koala 以上、JDK 17。
 - テスト端末は Android 11 以降。開発中はオーバーレイ・使用状況アクセス・通知アクセスを手動で許可。
 
-### 6.2 Supabase 設定（必須・ソース管理禁止）
-`local.properties` に以下を追加：
+### 6.2 Supabase 設定（任意・ソース管理禁止）
+設定を入れる場合は `local.properties` に以下を追加（未設定でもビルド・起動可能）：
 ```
 SUPABASE_URL=https://example.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 ```
-`BuildConfig` 経由で `SupabaseModule` に渡される。誤設定時は `MainActivity` のデバッグチェックで例外が発生する。
+`BuildConfig` 経由で `SupabaseModule` に渡される。未設定または空の場合は Supabase クライアントを生成せずスキップする。
 
 ### 6.3 ビルド / 実行コマンド
 - `./gradlew assembleDebug` : デバッグ APK ビルド。
@@ -101,7 +102,7 @@ SUPABASE_ANON_KEY=your-anon-key
 ---
 
 ## 7. テスト & 品質計画
-- 現状は `ExampleUnitTest` / `ExampleInstrumentedTest` のみ。`PackageEventThrottler`, `LockScreenViewModel`, `UsageWatcher` など副作用の大きいロジックに対する単体テストをフェーズ 7 で整備する。
+- 現状、自動テストは未配置（テンプレートを削除済み）。`PackageEventThrottler`, `LockScreenViewModel`, `UsageWatcher` など副作用の大きいロジックに対する単体テストをフェーズ 7 で整備する。
 - フォアグラウンドサービスやオーバーレイは端末依存差異が大きいため、Pixel / Galaxy / Xperia での抜け道検証をテスト項目に含める。
 - バッテリーインパクトや `WakeLock` 維持時間の計測、Sentry 等の監視は `IMPLEMENTATION_PLAN.md` の「実装したい技術リスト」を参照してチケット化する。
 
@@ -124,7 +125,8 @@ SUPABASE_ANON_KEY=your-anon-key
 | v1.1 | 初版（Lock Task Mode 前提） | 2025/10/21 |
 | v1.2 | Lock Task + AlarmManager 方針、法的ポリシー追記 | 2025/10/22 |
 | v1.3 | 3 権限方式への転換、2 画面構成を導入 | 2025/11/03 |
-| **v1.4** | README を現行実装（Overlay/Usage 監視、Direct Boot 復旧、Supabase 構成、今後の課題）に合わせて全面更新 | **2025/11/12** |
+| v1.4 | README を現行実装（Overlay/Usage 監視、Direct Boot 復旧、Supabase 構成、今後の課題）に合わせて全面更新 | 2025/11/12 |
+| **v1.5** | Supabase を任意化（未設定でも起動可）、テンプレートテスト削除、README を現状に合わせ更新 | **2025/11/22** |
 
 ---
 

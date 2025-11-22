@@ -1,14 +1,14 @@
 package com.example.smartphone_lock.ui.lock
 
 import android.app.Activity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import com.example.smartphone_lock.data.datastore.DataStoreManager
 import com.example.smartphone_lock.data.repository.LockPermissionsRepository
 import com.example.smartphone_lock.data.repository.LockRepository
@@ -17,9 +17,6 @@ import com.example.smartphone_lock.service.LockMonitorService
 import com.example.smartphone_lock.service.OverlayLockService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.lang.ref.WeakReference
-import java.util.concurrent.TimeUnit
-import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,6 +27,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
+import javax.inject.Inject
 
 @HiltViewModel
 class LockScreenViewModel @Inject constructor(
@@ -50,7 +49,6 @@ class LockScreenViewModel @Inject constructor(
     val uiState: StateFlow<LockScreenUiState> = _uiState.asStateFlow()
 
     private var countdownJob: Job? = null
-    private var activityRef: WeakReference<Activity>? = null
     private var pendingLockActivationUntil: Long? = null
     private var overlayRunning: Boolean = false
 
@@ -184,7 +182,6 @@ class LockScreenViewModel @Inject constructor(
         val lockEndTimestamp = lockStartTimestamp +
             TimeUnit.HOURS.toMillis(hours.toLong()) +
             TimeUnit.MINUTES.toMillis(minutes.toLong())
-        activityRef = activity?.let(::WeakReference)
         countdownJob?.cancel()
         pendingLockActivationUntil = lockEndTimestamp
         _uiState.update { current ->
@@ -203,9 +200,8 @@ class LockScreenViewModel @Inject constructor(
         }
     }
 
-    fun stopLock(activity: Activity? = null) {
+    fun stopLock() {
         countdownJob?.cancel()
-        activityRef = null
         pendingLockActivationUntil = null
         _uiState.update { current ->
             current.copy(isLocked = false, remainingMillis = 0L)
@@ -238,7 +234,7 @@ class LockScreenViewModel @Inject constructor(
     }
 
     private fun onCountdownFinished() {
-        stopLock(activityRef?.get())
+        stopLock()
     }
 
     private fun ensureNotificationPermission(activity: Activity?): Boolean {

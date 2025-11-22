@@ -1,7 +1,5 @@
 package com.example.smartphone_lock.di
 
-import com.example.smartphone_lock.data.repository.ConfigRepository
-import com.example.smartphone_lock.data.repository.DefaultConfigRepository
 import com.example.smartphone_lock.data.repository.DefaultLockPermissionsRepository
 import com.example.smartphone_lock.data.repository.DefaultLockRepository
 import com.example.smartphone_lock.data.repository.LockPermissionsRepository
@@ -18,12 +16,6 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class RepositoryModule {
-
-    @Binds
-    @Singleton
-    abstract fun bindConfigRepository(
-        impl: DefaultConfigRepository
-    ): ConfigRepository
 
     @Binds
     @Singleton
