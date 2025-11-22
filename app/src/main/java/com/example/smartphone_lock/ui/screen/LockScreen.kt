@@ -237,6 +237,8 @@ fun LockScreen(
 
 private enum class DialType { HOURS, MINUTES }
 
+private enum class MinuteCategory { MIN, STANDARD, MAX }
+
 private fun allowedMinutesForHours(hours: Int): List<Int> {
     val increment = LockScreenViewModel.MINUTE_INCREMENT
     return when {
@@ -256,7 +258,23 @@ private fun LockDurationDial(
     modifier: Modifier = Modifier
 ) {
     val hourValues = remember { (LockScreenViewModel.MIN_DURATION_HOURS..LockScreenViewModel.MAX_DURATION_HOURS).toList() }
-    val minuteValues = remember(selectedHours) { allowedMinutesForHours(selectedHours) }
+    val minuteFullList = remember { (0..59 step LockScreenViewModel.MINUTE_INCREMENT).toList() }
+    val minuteMinList = remember { (LockScreenViewModel.MINUTE_INCREMENT..59 step LockScreenViewModel.MINUTE_INCREMENT).toList() }
+    val minuteZeroList = remember { listOf(0) }
+
+    val minuteCategory = when {
+        selectedHours >= LockScreenViewModel.MAX_DURATION_HOURS -> MinuteCategory.MAX
+        selectedHours <= LockScreenViewModel.MIN_DURATION_HOURS -> MinuteCategory.MIN
+        else -> MinuteCategory.STANDARD
+    }
+
+    val minuteValues = remember(minuteCategory) {
+        when (minuteCategory) {
+            MinuteCategory.MAX -> minuteZeroList
+            MinuteCategory.MIN -> minuteMinList
+            MinuteCategory.STANDARD -> minuteFullList
+        }
+    }
     val highlightColor = MaterialTheme.colorScheme.primary
     val textColor = MaterialTheme.colorScheme.onBackground
     val dialHeight = 200.dp
