@@ -17,7 +17,8 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
 
     @Inject
-    lateinit var supabaseClient: SupabaseClient
+    @JvmField
+    var supabaseClient: SupabaseClient? = null
 
     @Inject
     lateinit var supabaseConfigRepository: SupabaseConfigRepository
@@ -34,12 +35,16 @@ class MainActivity : ComponentActivity() {
                 val supabaseConfig = remember { supabaseConfigRepository.fetch() }
                 if (BuildConfig.DEBUG) {
                     LaunchedEffect(supabaseConfig) {
-                        check(supabaseConfig.url != null && supabaseConfig.anonKey != null) {
-                            "Supabase config is missing. Set SUPABASE_URL and SUPABASE_ANON_KEY in local.properties."
+                        if (supabaseConfig.url.isNullOrBlank() || supabaseConfig.anonKey.isNullOrBlank()) {
+                            Log.i(TAG, "Supabase config missing; running without Supabase")
+                        } else {
+                            Log.d(TAG, "Supabase config present; ready to initialize client on demand")
                         }
                     }
                     LaunchedEffect(supabaseClient) {
-                        Log.d(TAG, "Supabase client ready: ${supabaseClient.supabaseUrl}")
+                        supabaseClient?.let {
+                            Log.d(TAG, "Supabase client ready: ${it.supabaseUrl}")
+                        } ?: Log.i(TAG, "Supabase client not initialized (disabled)")
                     }
                 }
                 SmartphoneLockApp()

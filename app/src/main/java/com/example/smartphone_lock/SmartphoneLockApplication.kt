@@ -11,14 +11,17 @@ import javax.inject.Inject
 class SmartphoneLockApplication : Application() {
 
     @Inject
-    lateinit var supabaseClient: SupabaseClient
+    @JvmField
+    var supabaseClient: SupabaseClient? = null
 
     @Inject
     lateinit var lockRepository: LockRepository
 
     override fun onCreate() {
         super.onCreate()
-        Log.i(TAG, "Supabase initialized: success")
+        supabaseClient?.let {
+            Log.i(TAG, "Supabase initialized: success")
+        } ?: Log.i(TAG, "Supabase disabled: no client initialized")
         lockRepository.refreshDynamicLists()
     }
 
