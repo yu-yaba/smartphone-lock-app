@@ -86,12 +86,6 @@ class DataStoreManager @Inject constructor(
         writeCredentialEncryptedLockStateSafely(isLocked, lockStartTimestamp, lockEndTimestamp)
     }
 
-    suspend fun clearLockState() {
-        directBootLockStateStore.clear()
-        clearDeviceProtectedLockState()
-        clearCredentialEncryptedLockStateSafely()
-    }
-
     suspend fun syncCredentialStoreFromDeviceProtected() {
         val deviceProtectedState = directBootLockStateStore.snapshot()
         writeCredentialEncryptedLockStateSafely(
@@ -135,18 +129,6 @@ class DataStoreManager @Inject constructor(
         }
     }
 
-    private suspend fun clearCredentialEncryptedLockStateSafely() {
-        try {
-            clearCredentialEncryptedLockState()
-        } catch (throwable: Throwable) {
-            if (throwable is IllegalStateException) {
-                Log.w(TAG, "Credential storage unavailable; deferring CE lock-state clear", throwable)
-            } else {
-                throw throwable
-            }
-        }
-    }
-
     private suspend fun writeCredentialEncryptedLockState(
         isLocked: Boolean,
         lockStartTimestamp: Long?,
@@ -184,22 +166,6 @@ class DataStoreManager @Inject constructor(
             } else {
                 preferences.remove(DeviceProtectedKeys.LOCK_END_TIMESTAMP)
             }
-        }
-    }
-
-    private suspend fun clearCredentialEncryptedLockState() {
-        dataStore.edit { preferences ->
-            preferences.remove(Keys.IS_LOCKED)
-            preferences.remove(Keys.LOCK_START_TIMESTAMP)
-            preferences.remove(Keys.LOCK_END_TIMESTAMP)
-        }
-    }
-
-    private suspend fun clearDeviceProtectedLockState() {
-        deviceProtectedDataStore.edit { preferences ->
-            preferences.remove(DeviceProtectedKeys.IS_LOCKED)
-            preferences.remove(DeviceProtectedKeys.LOCK_START_TIMESTAMP)
-            preferences.remove(DeviceProtectedKeys.LOCK_END_TIMESTAMP)
         }
     }
 }
