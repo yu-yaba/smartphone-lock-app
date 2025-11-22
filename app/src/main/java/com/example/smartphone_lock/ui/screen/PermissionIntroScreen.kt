@@ -67,9 +67,6 @@ fun PermissionIntroScreen(
         onRequestUsageStats = {
             launchSafe(context, DefaultLockPermissionsRepository.usageAccessSettingsIntent())
         },
-        onRequestNotificationAccess = {
-            launchSafe(context, DefaultLockPermissionsRepository.notificationListenerSettingsIntent())
-        },
         modifier = modifier
     )
 }
@@ -80,7 +77,6 @@ fun PermissionIntroContent(
     onReload: () -> Unit,
     onRequestOverlay: () -> Unit,
     onRequestUsageStats: () -> Unit,
-    onRequestNotificationAccess: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -102,13 +98,12 @@ fun PermissionIntroContent(
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(24.dp))
-        PermissionList(
-            state = state,
-            onRequestOverlay = onRequestOverlay,
-            onRequestUsageStats = onRequestUsageStats,
-            onRequestNotificationAccess = onRequestNotificationAccess,
-            modifier = Modifier.weight(1f, fill = false)
-        )
+    PermissionList(
+        state = state,
+        onRequestOverlay = onRequestOverlay,
+        onRequestUsageStats = onRequestUsageStats,
+        modifier = Modifier.weight(1f, fill = false)
+    )
         Spacer(modifier = Modifier.height(24.dp))
         Button(onClick = onReload, modifier = Modifier.fillMaxWidth()) {
             Text(text = stringResource(id = R.string.permission_intro_reload))
@@ -121,7 +116,6 @@ private fun PermissionList(
     state: LockPermissionState,
     onRequestOverlay: () -> Unit,
     onRequestUsageStats: () -> Unit,
-    onRequestNotificationAccess: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val cards = listOf(
@@ -138,13 +132,6 @@ private fun PermissionList(
             granted = state.usageStatsGranted,
             buttonLabel = stringResource(id = R.string.permission_intro_open_settings),
             onClick = onRequestUsageStats
-        ),
-        PermissionCardData(
-            title = stringResource(id = R.string.permission_intro_notification_title),
-            description = stringResource(id = R.string.permission_intro_notification_description),
-            granted = state.notificationAccessGranted,
-            buttonLabel = stringResource(id = R.string.permission_intro_open_settings),
-            onClick = onRequestNotificationAccess
         )
     )
 

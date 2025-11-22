@@ -1,14 +1,12 @@
 <resources>
     <string name="app_name">Smartphone Lock</string>
     <string name="permission_intro_title">ロックを有効にする準備</string>
-    <string name="permission_intro_description">ロックを開始する前に、次の3つの権限を許可してください。設定アプリから戻ると自動的に状態を更新します。</string>
+    <string name="permission_intro_description">ロックを開始する前に、次の2つの権限を許可してください。設定アプリから戻ると自動的に状態を更新します。</string>
     <string name="permission_intro_reload">権限状態を再読み込み</string>
     <string name="permission_intro_overlay_title">画面の上に表示 (Overlay)</string>
     <string name="permission_intro_overlay_description">ロック中もこのアプリを最前面に維持するために必要です。</string>
     <string name="permission_intro_usage_title">使用状況へのアクセス</string>
     <string name="permission_intro_usage_description">他のアプリの起動を検知し、ロック状態を保つために使用します。</string>
-    <string name="permission_intro_notification_title">通知リスナー</string>
-    <string name="permission_intro_notification_description">通知を監視し、集中を妨げる情報を遮断するために利用します。</string>
     <string name="permission_intro_open_settings">設定を開く</string>
     <string name="permission_intro_status_granted">有効</string>
     <string name="permission_intro_status_denied">未許可</string>
