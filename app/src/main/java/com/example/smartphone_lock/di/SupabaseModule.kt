@@ -1,5 +1,6 @@
 package com.example.smartphone_lock.di
 
+import android.util.Log
 import com.example.smartphone_lock.config.SupabaseConfigRepository
 import dagger.Module
 import dagger.Provides
@@ -18,13 +19,14 @@ object SupabaseModule {
     @Singleton
     fun provideSupabaseClient(
         configRepository: SupabaseConfigRepository
-    ): SupabaseClient {
+    ): SupabaseClient? {
         val config = configRepository.fetch()
-        val url = requireNotNull(config.url) {
-            "Supabase URL is missing. Define SUPABASE_URL in local.properties."
-        }
-        val anonKey = requireNotNull(config.anonKey) {
-            "Supabase anon key is missing. Define SUPABASE_ANON_KEY in local.properties."
+        val url = config.url?.takeIf { it.isNotBlank() }
+        val anonKey = config.anonKey?.takeIf { it.isNotBlank() }
+
+        if (url == null || anonKey == null) {
+            Log.i(TAG, "Supabase disabled: missing URL or anon key; skipping client init")
+            return null
         }
 
         return createSupabaseClient(
@@ -34,4 +36,6 @@ object SupabaseModule {
             httpEngine = Android.create()
         }
     }
+
+    private const val TAG = "SupabaseModule"
 }
