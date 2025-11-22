@@ -31,11 +31,13 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -76,6 +78,7 @@ fun LockScreen(
     val permissionState by lockViewModel.permissionState.collectAsStateWithLifecycle()
     val permissionsGranted = permissionState.allGranted
     val uiState by lockViewModel.uiState.collectAsStateWithLifecycle()
+    var showStartConfirm by remember { mutableStateOf(false) }
 
     Box(
         modifier = modifier
@@ -88,6 +91,15 @@ fun LockScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             val columnScope = this
+            if (showStartConfirm) {
+                StartLockConfirmDialog(
+                    onConfirm = {
+                        showStartConfirm = false
+                        lockViewModel.startLock(activity)
+                    },
+                    onDismiss = { showStartConfirm = false }
+                )
+            }
             Text(
                 text = stringResource(id = R.string.lock_screen_title),
                 style = MaterialTheme.typography.headlineLarge,
@@ -215,7 +227,7 @@ fun LockScreen(
             }
 
             Button(
-                onClick = { lockViewModel.startLock(activity) },
+                onClick = { showStartConfirm = true },
                 modifier = Modifier
                     .fillMaxWidth()
                     .shadow(16.dp, RoundedCornerShape(32.dp), clip = false),
@@ -575,6 +587,28 @@ private fun NumberDial(
             }
         }
     }
+}
+
+@Composable
+private fun StartLockConfirmDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(id = R.string.lock_screen_confirm_title)) },
+        text = { Text(text = stringResource(id = R.string.lock_screen_confirm_message)) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(text = stringResource(id = R.string.lock_screen_confirm_positive))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(id = R.string.lock_screen_confirm_negative))
+            }
+        }
+    )
 }
 
 @Composable
