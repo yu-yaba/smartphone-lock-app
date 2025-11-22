@@ -18,13 +18,17 @@ import android.provider.Settings
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.example.smartphone_lock.BuildConfig
 import com.example.smartphone_lock.R
 import com.example.smartphone_lock.data.datastore.DataStoreManager
 import com.example.smartphone_lock.data.datastore.LockStatePreferences
@@ -197,7 +201,10 @@ class OverlayLockService : Service() {
             setBackgroundColor(LOCK_BACKGROUND_COLOR)
             isClickable = true
             isFocusable = true
-            setOnTouchListener { _, _ -> true }
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
         }
         val textView = TextView(this).apply {
             setTextColor(LOCK_TEXT_COLOR)
@@ -205,8 +212,42 @@ class OverlayLockService : Service() {
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
         }
-        container.addView(
+        content.addView(
             textView,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = TypedValue.applyDimension(
+                    TypedValue.COMPLEX_UNIT_DIP,
+                    24f,
+                    resources.displayMetrics
+                ).toInt()
+            }
+        )
+
+        if (BuildConfig.DEBUG) {
+            val debugButton = Button(this).apply {
+                text = getString(R.string.lock_screen_dev_force_unlock)
+                setTextColor(Color.WHITE)
+                setBackgroundColor(Color.RED)
+                setOnClickListener {
+                    serviceScope.launch {
+                        dataStoreManager.updateLockState(false, null, null)
+                    }
+                }
+            }
+            content.addView(
+                debugButton,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+
+        container.addView(
+            content,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
