@@ -3,7 +3,7 @@
 ---
 
 ## 1. 概要
-本アプリはスマホ依存症の克服を支援する **完全ロック型集中モード** を提供する。Lock Task Mode や Device Owner には頼らず、以下の 3 権限（オーバーレイ／使用状況アクセス／通知アクセス）を組み合わせたソフトロックでユーザー操作を封じる。UI は Jetpack Compose（黒 × 黄色テーマ）で実装し、Android 11 (API 30) 以降をサポートする。詳細なロードマップと評価対象の技術リストは常に [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) を参照すること。  
+本アプリはスマホ依存症の克服を支援する **完全ロック型集中モード** を提供する。Lock Task Mode や Device Owner には頼らず、以下の 2 権限（オーバーレイ／使用状況アクセス）を組み合わせたソフトロックでユーザー操作を封じる。UI は Jetpack Compose（黒 × 黄色テーマ）で実装し、Android 11 (API 30) 以降をサポートする。詳細なロードマップと評価対象の技術リストは常に [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) を参照すること。  
 Supabase 連携は現状オプション扱いで、URL / Key が未設定でもビルド・起動可能（クライアントは生成されず、ログのみ出力）。
 
 - **UI**: `LockScreen` のダイヤルで 1〜72 時間を設定し、残り時間のみを大型表示。
@@ -18,10 +18,10 @@ Supabase 連携は現状オプション扱いで、URL / Key が未設定でも�
 |---------|------------|----------------|----------------|
 | 0. 基盤整備 | 🟢 完了 | Compose / Hilt / Navigation の土台を `gradle/libs.versions.toml` と `app/build.gradle.kts` に統合。`./gradlew assembleDebug` が安定。 | Lint / Test の CI 自動化（任意）。 |
 | 1. Supabase 設定 | 🟡 任意・無効化可 | BuildConfig から URL / Key を渡せば `SupabaseModule` でクライアント生成。未設定時は `null` を DI しログのみでスキップ。 | 実際の API 実装を行う場合に設定を投入。 |
-| 2. 3 権限導入 | 🟢 完了 | `PermissionIntroScreen` と `DefaultLockPermissionsRepository` が Overlay / Usage / Notification を監視し、未許可時は権限画面を強制表示。 | ロック中に権限が剥奪された際の復帰 UX。 |
+| 2. 権限導入 | 🟢 完了 | `PermissionIntroScreen` と `DefaultLockPermissionsRepository` が Overlay / Usage を監視し、未許可時は権限画面を強制表示。 | ロック中に権限が剥奪された際の復帰 UX。 |
 | 3. ロック UI + Overlay | 🟢 完了 | `LockScreen` ダイヤル UI、`LockScreenViewModel` の DataStore 連携、`OverlayLockService` のフルスクリーン表示と Direct Boot 保存。 | Overlay 文言／アクセシビリティ調整、Alarm 連携へ布石。 |
 | 4. Foreground 監視 | 🟡 一部 | `LockMonitorService` + `UsageWatcher` が設定系パッケージを検知し `OverlayManager`/`LockUiLauncher` を発火。`PackageEventThrottler` でデバウンス。 | SystemUI / Play / Assistant などブラックリスト拡張とフォールバック監視。 |
-| 5. 通知ブロック | ⚪ 未着手 | `LockNotificationListenerService` を Manifest 登録のみ。 | 通知カテゴリ判定→ `cancelNotification`、通知経由の抜け道封鎖。 |
+| 5. 通知ブロック | ⚪ 未着手 | `LockNotificationListenerService` を Manifest 登録のみ。現在はロック必須権限から通知アクセスを外している。 | 通知カテゴリ判定→ `cancelNotification`、通知経由の抜け道封鎖を実装する場合に再度許可を誘導。 |
 | 6. AlarmManager 連携 | 🟡 一部 | `BootCompletedReceiver` と Direct Boot 二層保存、`LockMonitorService` の自己再起動 Alarm で復帰。 | `setExactAndAllowWhileIdle()` / WorkManager ベースの解除スケジュールと `SCHEDULE_EXACT_ALARM` 誘導。 |
 | 7. テスト & QA | ⚪ 未着手 | テンプレートテストを削除済み（現在テストゼロ）。 | ViewModel / Repository / Service の単体テスト、権限〜ロックの UI テスト、再起動手動検証。 |
 | 8. IaC & リリース | ⚪ 未着手 | Terraform / 配布物なし。 | Supabase IaC、Play β 提出物、利用規約・プライバシー整備。 |
@@ -35,7 +35,7 @@ Supabase 連携は現状オプション扱いで、URL / Key が未設定でも�
 - ロック中は `OverlayLockService` / `LockMonitorService` を起動し、解除時には両サービスを停止。Direct Boot ストア経由で端末再起動後も残り時間を復元できる。
 
 ### 3.2 権限導入フロー
-- `PermissionIntroScreen` は 3 権限それぞれに説明＋設定アプリ遷移ボタンを表示し、`LifecycleEventObserver` で復帰時に再評価する。
+- `PermissionIntroScreen` は 2 権限それぞれに説明＋設定アプリ遷移ボタンを表示し、`LifecycleEventObserver` で復帰時に再評価する。
 - `DefaultLockPermissionsRepository` が `Settings.canDrawOverlays` / `AppOpsManager` / `NotificationManagerCompat` を用いて権限状態をポーリングし、`SmartphoneLockApp` が NavHost を Permission→Lock の 2 画面に制御する。
 
 ### 3.3 オーバーレイと UsageStats 監視
@@ -70,7 +70,7 @@ Supabase 連携は現状オプション扱いで、URL / Key が未設定でも�
 ---
 
 ## 5. ロックフロー（高レベル）
-1. アプリ起動時に `SmartphoneLockApp` の NavHost がロードされ、3 権限のいずれかが未許可なら `PermissionIntroScreen` を表示。
+1. アプリ起動時に `SmartphoneLockApp` の NavHost がロードされ、必須2権限のいずれかが未許可なら `PermissionIntroScreen` を表示。
 2. すべて許可されると `LockScreen` に遷移し、ユーザーはダイヤルで 1〜72 時間を設定。`LockScreenViewModel` が選択値を DataStore に保存。
 3. 「ロック開始」で `LockScreenViewModel.startLock()` がロック開始/終了時刻を記録し、`OverlayLockService` / `LockMonitorService` を起動。Android 13+ では `POST_NOTIFICATIONS` を即時リクエスト。
 4. `OverlayLockService` がフルスクリーンオーバーレイを描画し、残り時間を 1 秒ごとに更新しながら Foreground 通知でも表示。
@@ -82,7 +82,7 @@ Supabase 連携は現状オプション扱いで、URL / Key が未設定でも�
 ## 6. セットアップ & ビルド
 ### 6.1 前提
 - Android Studio Koala 以上、JDK 17。
-- テスト端末は Android 11 以降。開発中はオーバーレイ・使用状況アクセス・通知アクセスを手動で許可。
+- テスト端末は Android 11 以降。開発中はオーバーレイ・使用状況アクセスを手動で許可。
 
 ### 6.2 Supabase 設定（任意・ソース管理禁止）
 設定を入れる場合は `local.properties` に以下を追加（未設定でもビルド・起動可能）：
@@ -110,7 +110,7 @@ SUPABASE_ANON_KEY=your-anon-key
 
 ## 8. 未完了タスク（抜粋）
 1. **Foreground 監視強化**（フェーズ4）: SystemUI / Play ストア / Assistant をブラックリスト化し、UsageStats 非対応端末向けに `ActivityManager` フォールバックを追加。動的ホワイト/ブラックリストを `LockRepository` で管理。
-2. **通知ブロック実装**（フェーズ5）: `LockNotificationListenerService` でカテゴリ判定→ `cancelNotification` を実施し、通知経由の設定遷移を検知して `LockUiLauncher` と連携。
+2. **通知ブロック実装（任意）**（フェーズ5）: 将来 `LockNotificationListenerService` でカテゴリ判定→ `cancelNotification` を実施し、通知経由の設定遷移を検知して `LockUiLauncher` と連携する場合に再度対応。
 3. **正確な解除スケジュール**（フェーズ6）: `AlarmManager.setExactAndAllowWhileIdle()` / WorkManager による解除予約、`SCHEDULE_EXACT_ALARM` 権限誘導、解除時の UX を実装。
 4. **テスト & メトリクス**（フェーズ7）: ViewModel / Repository / Service のユニットテストと Compose UI テスト、Usage 監視遅延や Overlay 発火回数の計測ログを整備。
 5. **IaC / リリース準備**（フェーズ8）: Supabase を Terraform 化し、Play β 提出物（スクリーンショット、利用規約、プライバシー）を整える。
@@ -124,7 +124,7 @@ SUPABASE_ANON_KEY=your-anon-key
 |-----------|----------|------|
 | v1.1 | 初版（Lock Task Mode 前提） | 2025/10/21 |
 | v1.2 | Lock Task + AlarmManager 方針、法的ポリシー追記 | 2025/10/22 |
-| v1.3 | 3 権限方式への転換、2 画面構成を導入 | 2025/11/03 |
+| v1.3 | 3 権限方式への転換、2 画面構成を導入（後に通知は任意化） | 2025/11/03 |
 | v1.4 | README を現行実装（Overlay/Usage 監視、Direct Boot 復旧、Supabase 構成、今後の課題）に合わせて全面更新 | 2025/11/12 |
 | **v1.5** | Supabase を任意化（未設定でも起動可）、テンプレートテスト削除、README を現状に合わせ更新 | **2025/11/22** |
 
