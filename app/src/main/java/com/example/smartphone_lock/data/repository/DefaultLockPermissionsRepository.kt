@@ -7,7 +7,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Process
 import android.provider.Settings
-import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -24,7 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * Overlay / UsageStats / NotificationListener の状態を監視する実装。
+ * Overlay / UsageStats の状態を監視する実装。
  * 設定画面から復帰したタイミングで ProcessLifecycleOwner から再評価を行い、
  * UI に最新の状態を通知する。
  */
@@ -62,8 +61,7 @@ class DefaultLockPermissionsRepository @Inject constructor(
     private fun readCurrentState(): LockPermissionState {
         return LockPermissionState(
             overlayGranted = Settings.canDrawOverlays(context),
-            usageStatsGranted = isUsageStatsGranted(context),
-            notificationAccessGranted = isNotificationAccessGranted(context)
+            usageStatsGranted = isUsageStatsGranted(context)
         )
     }
 
@@ -87,11 +85,6 @@ class DefaultLockPermissionsRepository @Inject constructor(
         return mode == AppOpsManager.MODE_ALLOWED
     }
 
-    private fun isNotificationAccessGranted(context: Context): Boolean {
-        val enabledPackages = NotificationManagerCompat.getEnabledListenerPackages(context)
-        return enabledPackages.contains(context.packageName)
-    }
-
     companion object {
         fun overlaySettingsIntent(context: Context): Intent {
             return Intent(
@@ -102,10 +95,6 @@ class DefaultLockPermissionsRepository @Inject constructor(
 
         fun usageAccessSettingsIntent(): Intent {
             return Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
-        }
-
-        fun notificationListenerSettingsIntent(): Intent {
-            return Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
         }
     }
 }
