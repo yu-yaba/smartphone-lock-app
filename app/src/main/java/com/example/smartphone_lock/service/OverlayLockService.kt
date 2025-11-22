@@ -171,7 +171,11 @@ class OverlayLockService : Service() {
         countdownTextView?.text = formatted
         if (hasPostNotificationPermission()) {
             val notification = buildNotification(formatted)
-            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
+            try {
+                NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
+            } catch (security: SecurityException) {
+                Log.w(TAG, "Notification permission denied at runtime; skipping update", security)
+            }
         }
     }
 
