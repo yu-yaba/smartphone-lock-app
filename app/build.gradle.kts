@@ -48,11 +48,6 @@ android {
             "SUPABASE_ANON_KEY",
             "\"${localProperties.getSanitizedProperty("SUPABASE_ANON_KEY")}\""
         )
-        buildConfigField(
-            "String",
-            "SUPABASE_SERVICE_ROLE_KEY",
-            "\"${localProperties.getSanitizedProperty("SUPABASE_SERVICE_ROLE_KEY")}\""
-        )
     }
 
     buildTypes {
@@ -110,17 +105,10 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
-    testImplementation(libs.robolectric)
-    testImplementation(libs.androidx.test.core)
-    testImplementation(libs.hilt.android.testing)
-    kaptTest(libs.dagger.hilt.compiler)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    androidTestImplementation(libs.androidx.test.core)
     debugImplementation(libs.androidx.compose.ui.tooling)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 
 kapt {

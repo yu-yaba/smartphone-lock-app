@@ -7,7 +7,6 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import com.example.smartphone_lock.config.SupabaseConfigRepository
-import com.example.smartphone_lock.data.repository.ConfigRepository
 import com.example.smartphone_lock.ui.theme.SmartphoneLockTheme
 import dagger.hilt.android.AndroidEntryPoint
 import io.github.jan.supabase.SupabaseClient
@@ -23,13 +22,8 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var supabaseConfigRepository: SupabaseConfigRepository
 
-    @Inject
-    lateinit var configRepository: ConfigRepository
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // DI パイプラインの初期化が起動時に行われることを保証する。
-        configRepository.getAppConfig()
         setContent {
             SmartphoneLockTheme {
                 val supabaseConfig = remember { supabaseConfigRepository.fetch() }

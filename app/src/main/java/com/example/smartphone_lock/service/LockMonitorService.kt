@@ -18,7 +18,6 @@ import android.os.SystemClock
 import android.os.UserManager
 import android.util.Log
 import androidx.annotation.RequiresApi
-import androidx.annotation.VisibleForTesting
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.smartphone_lock.R
@@ -154,7 +153,7 @@ class LockMonitorService : Service() {
         val shouldLaunch = lockUiRedirectThrottler.shouldTrigger(packageName)
         if (shouldLaunch) {
             Log.d(TAG, "Launching lock UI for package=$packageName reason=$reason")
-            lockUiLauncher.bringToFront(packageName)
+            lockUiLauncher.bringToFront()
         } else {
             Log.v(TAG, "Skip lock UI launch (debounced) for package=$packageName reason=$reason")
         }
@@ -168,18 +167,8 @@ class LockMonitorService : Service() {
         return "settings"
     }
 
-    @VisibleForTesting
-    internal fun replaceServiceScope(testScope: CoroutineScope) {
-        serviceScope.cancel()
-        serviceScope = testScope
-    }
-
     private fun ensureForeground() {
         if (foregroundStarted) return
-        if (!enableForegroundNotificationsForTests) {
-            foregroundStarted = true
-            return
-        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasPostNotificationPermissionCompat()) {
             Log.w(TAG, "Notification permission missing; running monitor without foreground")
@@ -300,12 +289,6 @@ class LockMonitorService : Service() {
             val intent = Intent(context, LockMonitorService::class.java)
             context.stopService(intent)
         }
-
-        @VisibleForTesting
-        internal var enableForegroundNotificationsForTests: Boolean = true
-
-        @VisibleForTesting
-        internal fun startIntent(context: Context): Intent = Intent(context, LockMonitorService::class.java)
     }
 
     private fun supportsDeviceProtectedStorage(): Boolean =
