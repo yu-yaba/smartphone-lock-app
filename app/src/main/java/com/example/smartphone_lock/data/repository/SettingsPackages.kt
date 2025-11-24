@@ -17,5 +17,20 @@ object SettingsPackages {
         "com.oneplus.security",
         "com.realme.securitycenter",
         "com.coloros.safecenter",
+        // SystemUI (Notification Shade / Quick Settings / Recents on some devices)
+        "com.android.systemui",
+        // Launchers (Home Screen / Recents)
+        "com.google.android.apps.nexuslauncher", // Pixel
+        "com.android.launcher3",                 // AOSP
+        "com.sec.android.app.launcher",          // Samsung
+        "com.miui.home",                         // Xiaomi
+        "com.huawei.android.launcher",           // Huawei
+        "com.oppo.launcher",                     // Oppo
+        "com.vivo.launcher",                     // Vivo
+        // Voice Assistants
+        "com.google.android.googlequicksearchbox", // Google App / Assistant
+        "com.google.android.apps.googleassistant", // Assistant standalone
+        "com.samsung.android.bixby.agent",       // Bixby
+        "com.amazon.dee.app",                    // Alexa
     )
 }
