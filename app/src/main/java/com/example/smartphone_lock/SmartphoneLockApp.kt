@@ -25,13 +25,18 @@ fun SmartphoneLockApp(
     val navController = rememberNavController()
     val permissionState = lockViewModel.permissionState.collectAsStateWithLifecycle()
     val currentBackStackEntry = navController.currentBackStackEntryAsState().value
+    val startDestination = if (permissionState.value.allGranted) {
+        AppDestination.Lock.route
+    } else {
+        AppDestination.Permission.route
+    }
 
     LaunchedEffect(Unit) {
         lockViewModel.refreshPermissions()
     }
 
     LaunchedEffect(permissionState.value.allGranted, currentBackStackEntry?.destination?.route) {
-        val currentRoute = currentBackStackEntry?.destination?.route ?: return@LaunchedEffect
+        val currentRoute = currentBackStackEntry?.destination?.route
         val target = determinePermissionDestination(currentRoute, permissionState.value.allGranted)
         if (target != null) {
             navController.navigateAndSetAsRoot(target)
@@ -44,7 +49,7 @@ fun SmartphoneLockApp(
     ) {
         NavHost(
             navController = navController,
-            startDestination = AppDestination.Permission.route,
+            startDestination = startDestination,
             modifier = Modifier.fillMaxSize()
         ) {
             composable(AppDestination.Permission.route) {
