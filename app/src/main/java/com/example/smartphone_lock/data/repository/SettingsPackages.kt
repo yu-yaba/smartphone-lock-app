@@ -32,5 +32,20 @@ object SettingsPackages {
         "com.google.android.apps.googleassistant", // Assistant standalone
         "com.samsung.android.bixby.agent",       // Bixby
         "com.amazon.dee.app",                    // Alexa
+
+        // Package installers
+        "com.android.packageinstaller",          // AOSP installer
+        "com.google.android.packageinstaller",   // GMS/Pixel installer
+        "com.samsung.android.packageinstaller",  // Samsung installer
+        "com.miui.packageinstaller",             // Xiaomi/MIUI installer
+        "com.coloros.safecenter",                // Oppo/ColorOS installer (fallback)
+
+        // App stores (uninstall/disable経路の封じ込み)
+        "com.android.vending",                   // Google Play Store
+        "com.sec.android.app.samsungapps",       // Samsung Galaxy Store
+        "com.xiaomi.market",                     // Xiaomi GetApps
+        "com.oppo.market",                       // Oppo Market
+        "com.vivo.appstore",                     // Vivo App Store
+        "com.huawei.appmarket"                   // Huawei AppGallery
     )
 }
