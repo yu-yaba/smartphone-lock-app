@@ -1,4 +1,4 @@
-# スマホ依存防止アプリ README（v1.5）
+# スマホ依存防止アプリ README（v1.7）
 
 ---
 
@@ -6,9 +6,9 @@
 本アプリはスマホ依存症の克服を支援する **完全ロック型集中モード** を提供する。Lock Task Mode や Device Owner には頼らず、以下の 2 権限（オーバーレイ／使用状況アクセス）を組み合わせたソフトロックでユーザー操作を封じる。UI は Jetpack Compose（黒 × 黄色テーマ）で実装し、Android 11 (API 30) 以降をサポートする。詳細なロードマップと評価対象の技術リストは常に [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) を参照すること。  
 Supabase 連携は現状オプション扱いで、URL / Key が未設定でもビルド・起動可能（クライアントは生成されず、ログのみ出力）。
 
-- **UI**: `LockScreen` のダイヤルで 1〜72 時間を設定し、残り時間のみを大型表示。
+- **UI**: `LockScreen` のダイヤルで 1〜72 時間を設定し、残り時間のみを大型表示。開始時に確認ダイアログを挟み誤操作を防止。
 - **状態管理**: `LockScreenViewModel` + `DataStoreManager` + `DirectBootLockStateStore` でロック状態を多層保存し、再起動後も復帰。
-- **サービス構成**: `OverlayLockService` がカウントダウン付きオーバーレイを描画し、`LockMonitorService`（Foreground + UsageStats監視）が設定アプリ等を検知して即座に UI を取り戻す。
+- **サービス構成**: `OverlayLockService` がカウントダウン付きオーバーレイを描画し全画面タッチを食い止める。`LockMonitorService`（Foreground + UsageStats監視）が設定／SystemUI／ホーム／音声アシスタントに加え、インストーラ・主要アプリストアを検知して即座に UI を取り戻す。デバッグビルドではオーバーレイ上に即時解除ボタンを表示。
 - **構成管理**: Supabase URL/Key を `local.properties` > BuildConfig 経由で渡せば `SupabaseModule` がクライアントを初期化。未設定でも動作し、ログのみ出力してスキップ（API フローは未実装）。
 
 ---
@@ -19,8 +19,8 @@ Supabase 連携は現状オプション扱いで、URL / Key が未設定でも�
 | 0. 基盤整備 | 🟢 完了 | Compose / Hilt / Navigation の土台を `gradle/libs.versions.toml` と `app/build.gradle.kts` に統合。`./gradlew assembleDebug` が安定。 | Lint / Test の CI 自動化（任意）。 |
 | 1. Supabase 設定 | 🟡 任意・無効化可 | BuildConfig から URL / Key を渡せば `SupabaseModule` でクライアント生成。未設定時は `null` を DI しログのみでスキップ。 | 実際の API 実装を行う場合に設定を投入。 |
 | 2. 権限導入 | 🟢 完了 | `PermissionIntroScreen` と `DefaultLockPermissionsRepository` が Overlay / Usage を監視し、未許可時は権限画面を強制表示。 | ロック中に権限が剥奪された際の復帰 UX。 |
-| 3. ロック UI + Overlay | 🟢 完了 | `LockScreen` ダイヤル UI、`LockScreenViewModel` の DataStore 連携、`OverlayLockService` のフルスクリーン表示と Direct Boot 保存。 | Overlay 文言／アクセシビリティ調整、Alarm 連携へ布石。 |
-| 4. Foreground 監視 | 🟡 一部 | `LockMonitorService` + `UsageWatcher` が設定系パッケージを検知し `OverlayManager`/`LockUiLauncher` を発火。`PackageEventThrottler` でデバウンス。 | SystemUI / Play / Assistant などブラックリスト拡張とフォールバック監視。 |
+| 3. ロック UI + Overlay | 🟢 完了 | `LockScreen` ダイヤル UI（分ダイヤルが時間に連動する不具合を解消）、開始確認ダイアログ、`LockScreenViewModel` の DataStore 連携、`OverlayLockService` のフルスクリーン表示と Direct Boot 保存。デバッグ時のみ即時解除ボタンをオーバーレイに追加。 | Overlay 文言／アクセシビリティ調整、Alarm 連携へ布石。 |
+| 4. Foreground 監視 | 🟡 一部 | `LockMonitorService` + `UsageWatcher` が設定・SystemUI・主要ランチャー・音声アシスタント・インストーラ・主要アプリストアを検知し `OverlayManager`/`LockUiLauncher` を発火。`PackageEventThrottler` でデバウンス。 | ActivityManager フォールバックや端末依存差異への追加対策。 |
 | 5. 通知ブロック | ⚪ 未着手 | `LockNotificationListenerService` を Manifest 登録のみ。現在はロック必須権限から通知アクセスを外している。 | 通知カテゴリ判定→ `cancelNotification`、通知経由の抜け道封鎖を実装する場合に再度許可を誘導。 |
 | 6. AlarmManager 連携 | 🟡 一部 | `BootCompletedReceiver` と Direct Boot 二層保存、`LockMonitorService` の自己再起動 Alarm で復帰。 | `setExactAndAllowWhileIdle()` / WorkManager ベースの解除スケジュールと `SCHEDULE_EXACT_ALARM` 誘導。 |
 | 7. テスト & QA | ⚪ 未着手 | テンプレートテストを削除済み（現在テストゼロ）。 | ViewModel / Repository / Service の単体テスト、権限〜ロックの UI テスト、再起動手動検証。 |
@@ -40,11 +40,14 @@ Supabase 連携は現状オプション扱いで、URL / Key が未設定でも�
 
 ### 3.3 オーバーレイと UsageStats 監視
 - `OverlayLockService` は Foreground 通知 + フルスクリーン `WindowManager` オーバーレイで残り時間を表示し、端末ロック時は Device Protected ストアを参照する。`formatLockRemainingTime()` を用いて 1 秒ごとに更新。
-- `LockMonitorService` は WakeLock と Foreground 通知で常駐し、`UsageWatcher`（UsageStats API）を 750ms 間隔でポーリング。`SettingsPackages` に該当するアプリが前面に来た際は `OverlayManager.show()` と `LockUiLauncher.bringToFront()` で自アプリを復帰させる。
+- `LockMonitorService` は WakeLock と Foreground 通知で常駐し、`UsageWatcher`（UsageStats API）を 750ms 間隔でポーリング。`SettingsPackages` に該当する（設定／SystemUI／ホーム／音声アシスタント／インストーラ／主要ストア）アプリが前面に来た際は `OverlayManager.show()` と `LockUiLauncher.bringToFront()` で自アプリを復帰させる。
 - `PackageEventThrottler` で Overlay 再描画と再起動をデバウンスし、`LockMonitorService.onTaskRemoved()` で 1 秒後の自己再起動 Alarm をセットして強制終了に備える。
+- オーバーレイは全画面タッチを食い止め、カットアウト領域まで覆うレイアウトを採用。デバッグビルドのみ赤い即時解除ボタンを表示する。
+- `UsageStatsForegroundAppEventSource.collectRecentEvents` は SecurityException などを握りつぶし、監視が落ちないよう防御的にラップしている。
+- `DefaultLockPermissionsRepository` は AppOps 変化を即時検知し、Overlay/Usage 権限が変わった瞬間に状態を再評価する。
 
 ### 3.4 再起動・復旧
-- `BootCompletedReceiver` は `ACTION_BOOT_COMPLETED / LOCKED_BOOT_COMPLETED / USER_UNLOCKED` を受け、保存先（CE or DP）を切り替えつつロック状態を読み出し、必要なら `LockMonitorService` と `OverlayLockService` を再スタートする。
+- `BootCompletedReceiver` は `ACTION_BOOT_COMPLETED / LOCKED_BOOT_COMPLETED / USER_UNLOCKED` を受け、保存先（CE or DP）を切り替えつつロック状態を読み出し、必要なら `LockMonitorService` と `OverlayLockService` を再スタートする（exported=true で確実に受信）。
 - `DirectBootLockStateStore` は Device Protected Storage 上の `SharedPreferences` でロック状態を即時同期し、ユーザー未解錠でもカウントダウンが継続できる。
 
 ### 3.5 Supabase 構成（現在は任意）
@@ -126,7 +129,9 @@ SUPABASE_ANON_KEY=your-anon-key
 | v1.2 | Lock Task + AlarmManager 方針、法的ポリシー追記 | 2025/10/22 |
 | v1.3 | 3 権限方式への転換、2 画面構成を導入（後に通知は任意化） | 2025/11/03 |
 | v1.4 | README を現行実装（Overlay/Usage 監視、Direct Boot 復旧、Supabase 構成、今後の課題）に合わせて全面更新 | 2025/11/12 |
-| **v1.5** | Supabase を任意化（未設定でも起動可）、テンプレートテスト削除、README を現状に合わせ更新 | **2025/11/22** |
+| v1.5 | Supabase を任意化（未設定でも起動可）、テンプレートテスト削除、README を現状に合わせ更新 | 2025/11/22 |
+| **v1.6** | ダイヤル連動バグ修正、ロック開始確認ダイアログ追加、オーバーレイのタッチ食い止め＋デバッグ解除ボタン、ブート後復帰の確実化、UsageWatcher 例外防御 | **2025/11/22** |
+| **v1.7** | 権限変更の即時検知を追加、監視対象をインストーラ・主要アプリストアまで拡張 | **2025/11/24** |
 
 ---
 

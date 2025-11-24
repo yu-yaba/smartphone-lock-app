@@ -24,13 +24,17 @@ class UsageStatsForegroundAppEventSource @Inject constructor(
         }
         val end = System.currentTimeMillis()
         val start = end - windowMillis
-        val usageEvents = usageStatsManager.queryEvents(start, end) ?: return
-        val event = UsageEvents.Event()
-        while (usageEvents.hasNextEvent()) {
-            usageEvents.getNextEvent(event)
-            if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND && !event.packageName.isNullOrBlank()) {
-                onEvent(event.packageName)
+        try {
+            val usageEvents = usageStatsManager.queryEvents(start, end) ?: return
+            val event = UsageEvents.Event()
+            while (usageEvents.hasNextEvent()) {
+                usageEvents.getNextEvent(event)
+                if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND && !event.packageName.isNullOrBlank()) {
+                    onEvent(event.packageName)
+                }
             }
+        } catch (exception: Exception) {
+            Log.w(TAG, "Failed to collect usage events", exception)
         }
     }
 
