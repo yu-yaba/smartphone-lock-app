@@ -21,7 +21,12 @@
     <string name="lock_screen_minutes_label">分</string>
     <string name="lock_screen_duration_separator">:</string>
     <string name="lock_screen_start_button">ロック開始</string>
+    <string name="lock_screen_confirm_title">本当にロックしますか？</string>
+    <string name="lock_screen_confirm_message">設定した時間の間、スマホ操作が制限されます。開始してよろしいですか？</string>
+    <string name="lock_screen_confirm_positive">開始する</string>
+    <string name="lock_screen_confirm_negative">キャンセル</string>
     <string name="lock_screen_stop_button">ロック解除</string>
+    <string name="lock_screen_dev_force_unlock">開発用: 即時解除</string>
     <string name="lock_screen_permissions_missing">必要な権限が不足しています。権限画面で設定を完了してください。</string>
     <string name="lock_screen_locked_message">集中モード中</string>
     <string name="lock_screen_remaining_time_hours_minutes">残り %1$d時間%2$d分</string>

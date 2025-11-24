@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Process
 import android.provider.Settings
+import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -48,6 +49,7 @@ class DefaultLockPermissionsRepository @Inject constructor(
 
     init {
         ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver)
+        startAppOpsWatchers()
     }
 
     override suspend fun refreshPermissionState() {
@@ -82,10 +84,12 @@ class DefaultLockPermissionsRepository @Inject constructor(
                 context.packageName
             )
         }
-        return mode == AppOpsManager.MODE_ALLOWED
+        return mode == AppOpsManager.MODE_ALLOWED || mode == AppOpsManager.MODE_FOREGROUND
     }
 
     companion object {
+        private const val TAG = "LockPermissionsRepository"
+
         fun overlaySettingsIntent(context: Context): Intent {
             return Intent(
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -96,5 +100,20 @@ class DefaultLockPermissionsRepository @Inject constructor(
         fun usageAccessSettingsIntent(): Intent {
             return Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
         }
+    }
+
+    private fun startAppOpsWatchers() {
+        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager
+            ?: return
+        val listener = AppOpsManager.OnOpChangedListener { op, pkg ->
+            if (pkg != context.packageName) return@OnOpChangedListener
+            if (op == AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW || op == AppOpsManager.OPSTR_GET_USAGE_STATS) {
+                Log.i(TAG, "AppOp changed for $op; re-evaluating permissions")
+                scope.launch { emitLatestState() }
+            }
+        }
+        // register watchers for both Overlay and Usage access
+        appOps.startWatchingMode(AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW, context.packageName, listener)
+        appOps.startWatchingMode(AppOpsManager.OPSTR_GET_USAGE_STATS, context.packageName, listener)
     }
 }
