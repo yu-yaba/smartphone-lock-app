@@ -84,7 +84,7 @@ class DefaultLockPermissionsRepository @Inject constructor(
                 context.packageName
             )
         }
-        return mode == AppOpsManager.MODE_ALLOWED
+        return mode == AppOpsManager.MODE_ALLOWED || mode == AppOpsManager.MODE_FOREGROUND
     }
 
     companion object {
