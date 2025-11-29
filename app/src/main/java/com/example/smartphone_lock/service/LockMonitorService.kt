@@ -1,11 +1,8 @@
 package com.example.smartphone_lock.service
 
 import android.Manifest
-import android.app.AlarmManager
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -14,7 +11,6 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
-import android.os.SystemClock
 import android.os.UserManager
 import android.util.Log
 import androidx.annotation.RequiresApi
@@ -86,7 +82,7 @@ class LockMonitorService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        scheduleRestart()
+        ServiceRestartScheduler.schedule(this, LockMonitorService::class.java, RESTART_REQUEST_CODE)
     }
 
     private fun startMonitoring() {
@@ -240,31 +236,11 @@ class LockMonitorService : Service() {
         wakeLock = null
     }
 
-    private fun scheduleRestart() {
-        val intent = Intent(this, LockMonitorService::class.java)
-        val flags = PendingIntent.FLAG_UPDATE_CURRENT or
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
-        val pendingIntent = PendingIntent.getService(
-            this,
-            RESTART_REQUEST_CODE,
-            intent,
-            flags
-        )
-        val triggerAt = SystemClock.elapsedRealtime() + RESTART_DELAY_MILLIS
-        val alarmManager = getSystemService(Context.ALARM_SERVICE) as? AlarmManager
-        alarmManager?.setExactAndAllowWhileIdle(
-            AlarmManager.ELAPSED_REALTIME_WAKEUP,
-            triggerAt,
-            pendingIntent
-        )
-    }
-
     companion object {
         private const val TAG = "LockMonitorService"
         private const val NOTIFICATION_ID = 2001
         private const val NOTIFICATION_CHANNEL_ID = "lock_monitor"
         private const val RESTART_REQUEST_CODE = 9001
-        private const val RESTART_DELAY_MILLIS = 1_000L
         private const val BLACKLIST_OVERLAY_DEBOUNCE_MILLIS = 1_000L
         private const val LOCK_UI_REDIRECT_DEBOUNCE_MILLIS = 1_500L
 
