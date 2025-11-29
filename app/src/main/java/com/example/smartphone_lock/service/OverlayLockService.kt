@@ -60,6 +60,7 @@ class OverlayLockService : Service() {
     private var deviceProtectedLockStateJob: Job? = null
     private var countdownJob: Job? = null
     private var userUnlockWatcherJob: Job? = null
+    private var deviceProtectedSnapshot: LockStatePreferences? = null
     private var foregroundStarted = false
     private var latestLockState: LockStatePreferences? = null
 
@@ -133,16 +134,16 @@ class OverlayLockService : Service() {
         if (deviceProtectedLockStateJob != null) return
         deviceProtectedLockStateJob = serviceScope.launch {
             dataStoreManager.deviceProtectedLockState.collectLatest { state ->
+                deviceProtectedSnapshot = LockStatePreferences(
+                    isLocked = state.isLocked,
+                    lockStartTimestamp = state.lockStartTimestamp,
+                    lockEndTimestamp = state.lockEndTimestamp
+                )
                 if (isUserUnlocked()) {
                     startCredentialEncryptedLockCollectionIfUnlocked()
                     cancel("User unlocked; DP overlay updates no longer needed")
                 } else {
-                    val snapshot = LockStatePreferences(
-                        isLocked = state.isLocked,
-                        lockStartTimestamp = state.lockStartTimestamp,
-                        lockEndTimestamp = state.lockEndTimestamp
-                    )
-                    handleLockState(snapshot)
+                    handleLockState(deviceProtectedSnapshot!!)
                 }
             }
         }
@@ -182,11 +183,21 @@ class OverlayLockService : Service() {
     }
 
     private fun handleLockState(state: LockStatePreferences) {
-        latestLockState = state
-        if (state.isLocked && state.lockEndTimestamp != null) {
+        val now = System.currentTimeMillis()
+        val fallbackLocked = deviceProtectedSnapshot?.let { dp ->
+            dp.isLocked && (dp.lockEndTimestamp == null || dp.lockEndTimestamp > now)
+        } == true
+        val effectiveState = when {
+            state.isLocked -> state
+            fallbackLocked -> deviceProtectedSnapshot!!
+            else -> state
+        }
+
+        latestLockState = effectiveState
+        if (effectiveState.isLocked && effectiveState.lockEndTimestamp != null) {
             ensureForeground()
             showOverlayIfNeeded()
-            restartCountdown(state.lockEndTimestamp)
+            restartCountdown(effectiveState.lockEndTimestamp)
         } else {
             WatchdogScheduler.cancelHeartbeat(this)
             WatchdogScheduler.cancelLockExpiry(this)
