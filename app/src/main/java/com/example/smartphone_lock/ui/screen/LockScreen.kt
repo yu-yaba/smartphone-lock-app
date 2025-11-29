@@ -1,31 +1,28 @@
 package com.example.smartphone_lock.ui.screen
 
 import android.app.Activity
-import android.os.Build
 import android.view.MotionEvent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.gestures.stopScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.gestures.stopScroll
-import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -35,7 +32,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -48,20 +44,29 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.smartphone_lock.R
+import com.example.smartphone_lock.model.LockPermissionState
+import com.example.smartphone_lock.ui.lock.LockScreenUiState
 import com.example.smartphone_lock.ui.lock.LockScreenViewModel
+import com.example.smartphone_lock.ui.theme.SmartphoneLockTheme
+import com.example.smartphone_lock.ui.theme.elevations
+import com.example.smartphone_lock.ui.theme.glass
+import com.example.smartphone_lock.ui.theme.gradients
+import com.example.smartphone_lock.ui.theme.radius
+import com.example.smartphone_lock.ui.theme.spacing
 import com.example.smartphone_lock.util.formatLockRemainingTime
 import kotlin.math.abs
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -76,167 +81,217 @@ fun LockScreen(
     val context = LocalContext.current
     val activity = context as? Activity
     val permissionState by lockViewModel.permissionState.collectAsStateWithLifecycle()
-    val permissionsGranted = permissionState.allGranted
     val uiState by lockViewModel.uiState.collectAsStateWithLifecycle()
+    LockScreenContent(
+        uiState = uiState,
+        permissionState = permissionState,
+        onStartLock = { activity?.let { lockViewModel.startLock(it) } },
+        onDurationChange = lockViewModel::updateSelectedDuration,
+        modifier = modifier
+    )
+}
+
+@Composable
+fun LockScreenContent(
+    uiState: LockScreenUiState,
+    permissionState: LockPermissionState,
+    onStartLock: () -> Unit,
+    onDurationChange: (Int, Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val spacing = MaterialTheme.spacing
+    val contentMaxWidth = 520.dp
+    val permissionsGranted = permissionState.allGranted
     var showStartConfirm by remember { mutableStateOf(false) }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 24.dp, vertical = 32.dp)
+            .background(MaterialTheme.gradients.skyDawn)
+            .padding(horizontal = spacing.xl, vertical = spacing.xxl)
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(spacing.lg)
         ) {
-            val columnScope = this
             if (showStartConfirm) {
                 StartLockConfirmDialog(
                     onConfirm = {
                         showStartConfirm = false
-                        lockViewModel.startLock(activity)
+                        onStartLock()
                     },
                     onDismiss = { showStartConfirm = false }
                 )
             }
-            Text(
-                text = stringResource(id = R.string.lock_screen_title),
-                style = MaterialTheme.typography.headlineLarge,
-                color = MaterialTheme.colorScheme.onBackground,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = stringResource(id = R.string.lock_screen_subtitle),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
-                textAlign = TextAlign.Center
-            )
+            val title = stringResource(id = R.string.lock_screen_title)
+            val subtitle = stringResource(id = R.string.lock_screen_subtitle)
 
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                columnScope.AnimatedVisibility(
-                    visible = !uiState.isLocked,
-                    enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
-                    exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 })
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.sizeIn(maxWidth = 480.dp)
-                    ) {
-                        Text(
-                            text = stringResource(id = R.string.lock_screen_duration_label),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        val selectedDurationText = when {
-                            uiState.selectedMinutes == 0 -> stringResource(
-                                id = R.string.lock_screen_selected_duration_hours_only,
-                                uiState.selectedHours
-                            )
-                            uiState.selectedHours == 0 -> stringResource(
-                                id = R.string.lock_screen_selected_duration_minutes_only,
-                                uiState.selectedMinutes
-                            )
-                            else -> stringResource(
-                                id = R.string.lock_screen_selected_duration_hours_minutes,
-                                uiState.selectedHours,
-                                uiState.selectedMinutes
-                            )
-                        }
-                        Text(
-                            text = selectedDurationText,
-                            style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.height(24.dp))
-                        LockDurationDial(
-                            selectedHours = uiState.selectedHours,
-                            selectedMinutes = uiState.selectedMinutes,
-                            onSelectionChanged = lockViewModel::updateSelectedDuration,
-                            enabled = permissionsGranted,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = stringResource(id = R.string.lock_screen_duration_hint),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-                            textAlign = TextAlign.Center
-                        )
-                        AnimatedVisibility(visible = !permissionsGranted) {
-                            Text(
-                                text = stringResource(id = R.string.lock_screen_permissions_missing),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.error,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(top = 16.dp)
-                            )
-                        }
-                    }
-                }
-
-                columnScope.AnimatedVisibility(
-                    visible = uiState.isLocked,
-                    enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 }),
-                    exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 })
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.sizeIn(maxWidth = 480.dp)
-                    ) {
-                        Text(
-                            text = stringResource(id = R.string.lock_screen_locked_message),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f)
-                        )
-                        Spacer(modifier = Modifier.height(24.dp))
-                        Text(
-                            text = formatRemainingTime(uiState.remainingMillis),
-                            color = MaterialTheme.colorScheme.primary,
-                            fontSize = 48.sp,
-                            fontWeight = FontWeight.Black,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            }
-
-            AnimatedVisibility(visible = uiState.isLocked) {
-                OutlinedButton(
-                    onClick = { lockViewModel.stopLock() },
+            if (title.isNotBlank() || subtitle.isNotBlank()) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    shape = RoundedCornerShape(32.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.primary
-                    )
+                        .widthIn(max = contentMaxWidth)
                 ) {
+                    if (title.isNotBlank()) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.headlineLarge,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                    if (subtitle.isNotBlank()) {
+                        if (title.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(spacing.sm))
+                        }
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.76f),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+
+            if (uiState.isLocked) {
+                LockStatusRow(
+                    uiState = uiState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = contentMaxWidth)
+                )
+            }
+
+            // Push the dial card downward so it sits slightly above center
+            Spacer(modifier = Modifier.weight(1f))
+
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = contentMaxWidth)
+                    .padding(top = spacing.sm, bottom = spacing.sm)
+            ) {
+                val shape = RoundedCornerShape(MaterialTheme.radius.l)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .sizeIn(maxWidth = 460.dp)
+                        .align(Alignment.Center)
+                        .shadow(
+                            elevation = MaterialTheme.elevations.level2,
+                            shape = shape,
+                            clip = true
+                        )
+                        .background(
+                            brush = MaterialTheme.glass.highlight,
+                            shape = shape
+                        )
+                        .background(
+                            color = MaterialTheme.glass.tint,
+                            shape = shape
+                        )
+                        .background(
+                            color = MaterialTheme.glass.background,
+                            shape = shape
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.glass.border,
+                            shape = shape
+                        )
+                        .padding(horizontal = spacing.xl, vertical = spacing.xl)
+                ) {
+                    val selectedDurationText = when {
+                        uiState.selectedMinutes == 0 -> stringResource(
+                            id = R.string.lock_screen_selected_duration_hours_only,
+                            uiState.selectedHours
+                        )
+                    uiState.selectedHours == 0 -> stringResource(
+                        id = R.string.lock_screen_selected_duration_minutes_only,
+                        uiState.selectedMinutes
+                    )
+                    else -> stringResource(
+                        id = R.string.lock_screen_selected_duration_hours_minutes,
+                        uiState.selectedHours,
+                        uiState.selectedMinutes
+                    )
+                }
+                Spacer(modifier = Modifier.height(spacing.xs))
+                Text(
+                    text = selectedDurationText,
+                    style = MaterialTheme.typography.displayLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(spacing.lg))
+                LockDurationDial(
+                    selectedHours = uiState.selectedHours,
+                    selectedMinutes = uiState.selectedMinutes,
+                    onSelectionChanged = onDurationChange,
+                    enabled = permissionsGranted && !uiState.isLocked,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                val durationHint = stringResource(id = R.string.lock_screen_duration_hint)
+                if (durationHint.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(spacing.md))
                     Text(
-                        text = stringResource(id = R.string.lock_screen_stop_button),
-                        style = MaterialTheme.typography.titleMedium
+                        text = durationHint,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        textAlign = TextAlign.Center
+                    )
+                }
+                AnimatedVisibility(visible = !permissionsGranted) {
+                    Text(
+                        text = stringResource(id = R.string.lock_screen_permissions_missing),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = spacing.md)
                     )
                 }
             }
+
+            // Close BoxWithConstraints scope before placing bottom button
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
 
             Button(
                 onClick = { showStartConfirm = true },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .shadow(16.dp, RoundedCornerShape(32.dp), clip = false),
-                shape = RoundedCornerShape(32.dp),
+                    .widthIn(max = contentMaxWidth)
+                    .height(54.dp)
+                    .shadow(
+                        elevation = MaterialTheme.elevations.level2,
+                        shape = RoundedCornerShape(MaterialTheme.radius.pill),
+                        clip = true
+                    )
+                    .background(
+                        brush = MaterialTheme.glass.highlight,
+                        shape = RoundedCornerShape(MaterialTheme.radius.pill)
+                    )
+                    .border(
+                        width = 1.dp,
+                        color = MaterialTheme.glass.border,
+                        shape = RoundedCornerShape(MaterialTheme.radius.pill)
+                    ),
+                shape = RoundedCornerShape(MaterialTheme.radius.pill),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
+                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.82f),
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                    disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
                 ),
-                enabled = activity != null && permissionsGranted && !uiState.isLocked
+                elevation = ButtonDefaults.buttonElevation(
+                    defaultElevation = 0.dp,
+                    pressedElevation = MaterialTheme.elevations.level1,
+                    disabledElevation = 0.dp
+                ),
+                enabled = permissionsGranted && !uiState.isLocked
             ) {
                 Text(
                     text = stringResource(id = R.string.lock_screen_start_button),
@@ -244,6 +299,62 @@ fun LockScreen(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun LockStatusRow(
+    uiState: LockScreenUiState,
+    modifier: Modifier = Modifier
+) {
+    val spacing = MaterialTheme.spacing
+
+    if (uiState.isLocked) {
+        Column(
+            modifier = modifier,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            StatusPill(
+                text = stringResource(id = R.string.lock_screen_status_locked),
+                background = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                contentColor = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(spacing.sm))
+            Text(
+            text = stringResource(id = R.string.lock_screen_remaining_label),
+            style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp),
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+        )
+        Text(
+            text = formatRemainingTime(uiState.remainingMillis),
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp
+            ),
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        }
+    }
+}
+
+@Composable
+private fun StatusPill(
+    text: String,
+    background: Color,
+    contentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val spacing = MaterialTheme.spacing
+    Box(
+        modifier = modifier
+            .background(color = background, shape = RoundedCornerShape(MaterialTheme.radius.s))
+            .padding(horizontal = spacing.md, vertical = spacing.xs)
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            color = contentColor
+        )
     }
 }
 
@@ -288,9 +399,9 @@ private fun LockDurationDial(
         }
     }
     val highlightColor = MaterialTheme.colorScheme.primary
-    val textColor = MaterialTheme.colorScheme.onBackground
-    val dialHeight = 200.dp
-    val highlightHeight = 56.dp
+    val textColor = MaterialTheme.colorScheme.onSurface
+    val dialHeight = 190.dp
+    val highlightHeight = 52.dp
 
     val hourListState = rememberLazyListState()
     val minuteListState = rememberLazyListState()
@@ -360,7 +471,7 @@ private fun LockDurationDial(
 
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically
     ) {
         DialColumn(
@@ -382,7 +493,7 @@ private fun LockDurationDial(
         Text(
             text = stringResource(id = R.string.lock_screen_duration_separator),
             style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Black),
-            color = textColor.copy(alpha = 0.6f)
+            color = textColor.copy(alpha = 0.45f)
         )
         DialColumn(
             dialType = DialType.MINUTES,
@@ -440,12 +551,14 @@ private fun DialColumn(
             listState = listState,
             onPointerDown = onPointerDown
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            color = textColor.copy(alpha = 0.7f)
-        )
+        if (label.isNotBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = textColor.copy(alpha = 0.6f)
+            )
+        }
     }
 }
 
@@ -529,6 +642,8 @@ private fun NumberDial(
             }
     }
 
+    val edgePadding = (dialHeight - highlightHeight) / 2
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -546,13 +661,8 @@ private fun NumberDial(
                 .fillMaxWidth()
                 .height(highlightHeight)
                 .background(
-                    color = highlightColor.copy(alpha = 0.08f),
-                    shape = RoundedCornerShape(highlightHeight / 2)
-                )
-                .border(
-                    width = 1.dp,
-                    color = highlightColor.copy(alpha = 0.4f),
-                    shape = RoundedCornerShape(highlightHeight / 2)
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
+                    shape = RoundedCornerShape(MaterialTheme.radius.m)
                 )
         )
 
@@ -560,14 +670,14 @@ private fun NumberDial(
             state = listState,
             userScrollEnabled = enabled,
             flingBehavior = flingBehavior,
-            contentPadding = PaddingValues(vertical = 64.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(vertical = edgePadding),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxSize()
         ) {
             itemsIndexed(values) { _, value ->
                 val isSelected = value == selectedValue
-                val targetAlpha = if (isSelected) 1f else 0.3f
-                val targetScale = if (isSelected) 1.25f else 1f
+                val targetAlpha = if (isSelected) 1f else 0.35f
+                val targetScale = if (isSelected) 1.18f else 1f
                 val alpha by animateFloatAsState(targetValue = targetAlpha, label = "dialAlpha")
                 val scale by animateFloatAsState(targetValue = targetScale, label = "dialScale")
 
@@ -596,15 +706,24 @@ private fun StartLockConfirmDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+        titleContentColor = MaterialTheme.colorScheme.onSurface,
+        textContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         title = { Text(text = stringResource(id = R.string.lock_screen_confirm_title)) },
         text = { Text(text = stringResource(id = R.string.lock_screen_confirm_message)) },
         confirmButton = {
-            TextButton(onClick = onConfirm) {
+            TextButton(
+                onClick = onConfirm,
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+            ) {
                 Text(text = stringResource(id = R.string.lock_screen_confirm_positive))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                onClick = onDismiss,
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+            ) {
                 Text(text = stringResource(id = R.string.lock_screen_confirm_negative))
             }
         }
@@ -616,5 +735,41 @@ private fun formatRemainingTime(remainingMillis: Long): String {
     val context = LocalContext.current
     return remember(remainingMillis, context) {
         formatLockRemainingTime(context, remainingMillis)
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun LockScreenPreview() {
+    SmartphoneLockTheme {
+        LockScreenContent(
+            uiState = LockScreenUiState(
+                selectedHours = 1,
+                selectedMinutes = 30,
+                isLocked = false,
+                remainingMillis = 90 * 60 * 1000L
+            ),
+            permissionState = LockPermissionState(overlayGranted = true, usageStatsGranted = true),
+            onStartLock = {},
+            onDurationChange = { _, _ -> }
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun LockScreenMissingPermissionPreview() {
+    SmartphoneLockTheme {
+        LockScreenContent(
+            uiState = LockScreenUiState(
+                selectedHours = 0,
+                selectedMinutes = 45,
+                isLocked = false,
+                remainingMillis = 0
+            ),
+            permissionState = LockPermissionState(overlayGranted = false, usageStatsGranted = true),
+            onStartLock = {},
+            onDurationChange = { _, _ -> }
+        )
     }
 }

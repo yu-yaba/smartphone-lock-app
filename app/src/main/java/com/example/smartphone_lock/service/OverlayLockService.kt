@@ -15,6 +15,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.UserManager
 import android.provider.Settings
+import android.util.DisplayMetrics
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -197,40 +198,78 @@ class OverlayLockService : Service() {
         ).apply {
             gravity = Gravity.CENTER
         }
+        val metrics = resources.displayMetrics
         val container = FrameLayout(this).apply {
-            setBackgroundColor(LOCK_BACKGROUND_COLOR)
+            val gradientDrawable = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(COLOR_GRADIENT_END, COLOR_GRADIENT_START)
+            )
+            background = gradientDrawable
             isClickable = true
             isFocusable = true
         }
+
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(
+                dpToPx(12f, metrics),
+                dpToPx(12f, metrics),
+                dpToPx(12f, metrics),
+                dpToPx(12f, metrics)
+            )
         }
+
+        val titleView = TextView(this).apply {
+            text = getString(R.string.overlay_lock_panel_title)
+            setTextColor(COLOR_TEXT_DARK_NAVY)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setIncludeFontPadding(false)
+        }
+
         val textView = TextView(this).apply {
-            setTextColor(LOCK_TEXT_COLOR)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 48f)
-            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(COLOR_TEXT_DARK_NAVY)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 32f)
+            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            setFontFeatureSettings("tnum")
             gravity = Gravity.CENTER
+            setIncludeFontPadding(false)
         }
+
+        content.addView(
+            titleView,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
         content.addView(
             textView,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                bottomMargin = TypedValue.applyDimension(
-                    TypedValue.COMPLEX_UNIT_DIP,
-                    24f,
-                    resources.displayMetrics
-                ).toInt()
+                topMargin = dpToPx(8f, metrics)
+                bottomMargin = dpToPx(8f, metrics)
             }
         )
 
         if (BuildConfig.DEBUG) {
             val debugButton = Button(this).apply {
                 text = getString(R.string.lock_screen_dev_force_unlock)
-                setTextColor(Color.WHITE)
-                setBackgroundColor(Color.RED)
+                setTextColor(COLOR_CLEAN_WHITE)
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = dpToPx(12f, metrics).toFloat()
+                    setColor(COLOR_WARNING_RED)
+                }
+                setPadding(
+                    dpToPx(12f, metrics),
+                    dpToPx(10f, metrics),
+                    dpToPx(12f, metrics),
+                    dpToPx(10f, metrics)
+                )
                 setOnClickListener {
                     serviceScope.launch {
                         dataStoreManager.updateLockState(false, null, null)
@@ -242,7 +281,9 @@ class OverlayLockService : Service() {
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
-                )
+                ).apply {
+                    topMargin = dpToPx(16f, metrics)
+                }
             )
         }
 
@@ -252,7 +293,10 @@ class OverlayLockService : Service() {
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER
-            )
+            ).apply {
+                val margin = dpToPx(16f, metrics)
+                setMargins(margin, margin, margin, margin)
+            }
         )
         overlayContainer = container
         countdownTextView = textView
@@ -335,13 +379,22 @@ class OverlayLockService : Service() {
             ) == PackageManager.PERMISSION_GRANTED
     }
 
+    private fun dpToPx(value: Float, metrics: DisplayMetrics): Int =
+        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value, metrics).toInt()
+
     companion object {
         private const val TAG = "OverlayLockService"
         private const val COUNTDOWN_INTERVAL_MILLIS = 1_000L
         private const val NOTIFICATION_ID = 1001
         private const val NOTIFICATION_CHANNEL_ID = "lock_overlay"
-        private val LOCK_BACKGROUND_COLOR = Color.BLACK
-        private val LOCK_TEXT_COLOR = Color.parseColor("#FFFFEB3B")
+
+        // Sky Concept Colors (aligned with concept.md)
+        private val COLOR_GRADIENT_START = Color.parseColor("#E6F2FF")
+        private val COLOR_GRADIENT_END = Color.parseColor("#0A84FF")
+        private val COLOR_TEXT_DARK_NAVY = Color.parseColor("#0B1A2D")
+        private val COLOR_TEXT_SECONDARY = Color.parseColor("#8291A8")
+        private val COLOR_WARNING_RED = Color.parseColor("#FF3B30")
+        private val COLOR_CLEAN_WHITE = Color.WHITE
 
         const val ACTION_START = "com.example.smartphone_lock.action.START_LOCK"
 

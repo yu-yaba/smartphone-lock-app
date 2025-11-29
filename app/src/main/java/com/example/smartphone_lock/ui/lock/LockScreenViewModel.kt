@@ -261,7 +261,7 @@ class LockScreenViewModel @Inject constructor(
 
     companion object {
         const val MIN_DURATION_HOURS = 0
-        const val MAX_DURATION_HOURS = 72
+        const val MAX_DURATION_HOURS = 24
         const val MINUTE_INCREMENT = 1
         private const val ONE_SECOND_MILLIS = 1_000L
         private const val TAG = "LockScreenViewModel"
