@@ -198,7 +198,11 @@ class OverlayLockService : Service() {
             gravity = Gravity.CENTER
         }
         val container = FrameLayout(this).apply {
-            setBackgroundColor(LOCK_BACKGROUND_COLOR)
+            val gradientDrawable = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.BOTTOM_TOP,
+                intArrayOf(COLOR_HORIZON_BLUE, COLOR_SKY_BLUE)
+            )
+            background = gradientDrawable
             isClickable = true
             isFocusable = true
         }
@@ -207,9 +211,9 @@ class OverlayLockService : Service() {
             gravity = Gravity.CENTER
         }
         val textView = TextView(this).apply {
-            setTextColor(LOCK_TEXT_COLOR)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 48f)
-            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(COLOR_TEXT_DARK_NAVY)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 80f) // Larger size
+            typeface = Typeface.create("sans-serif-light", Typeface.NORMAL) // Lighter font
             gravity = Gravity.CENTER
         }
         content.addView(
@@ -229,8 +233,8 @@ class OverlayLockService : Service() {
         if (BuildConfig.DEBUG) {
             val debugButton = Button(this).apply {
                 text = getString(R.string.lock_screen_dev_force_unlock)
-                setTextColor(Color.WHITE)
-                setBackgroundColor(Color.RED)
+                setTextColor(COLOR_CLEAN_WHITE)
+                setBackgroundColor(COLOR_WARNING_RED)
                 setOnClickListener {
                     serviceScope.launch {
                         dataStoreManager.updateLockState(false, null, null)
@@ -340,8 +344,13 @@ class OverlayLockService : Service() {
         private const val COUNTDOWN_INTERVAL_MILLIS = 1_000L
         private const val NOTIFICATION_ID = 1001
         private const val NOTIFICATION_CHANNEL_ID = "lock_overlay"
-        private val LOCK_BACKGROUND_COLOR = Color.BLACK
-        private val LOCK_TEXT_COLOR = Color.parseColor("#FFFFEB3B")
+        
+        // Sky Concept Colors
+        private val COLOR_HORIZON_BLUE = Color.parseColor("#E0F7FA")
+        private val COLOR_SKY_BLUE = Color.parseColor("#4FA3F7")
+        private val COLOR_TEXT_DARK_NAVY = Color.parseColor("#1A2A3A")
+        private val COLOR_WARNING_RED = Color.parseColor("#FF6B6B")
+        private val COLOR_CLEAN_WHITE = Color.WHITE
 
         const val ACTION_START = "com.example.smartphone_lock.action.START_LOCK"
 
