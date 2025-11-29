@@ -20,6 +20,9 @@ val WarningRed = Color(0xFFFF3B30)
 // Effects
 val OutlineHairline = Color(0xFFE3EAF5)
 val ScrimDark = Color(0x730B1A2D) // 45% opacity
+val GlassSurface = Color(0xC0FFFFFF) // translucent base
+val GlassSurfaceTint = Color(0x260A84FF) // subtle blue tint
+val GlassBorder = Color(0x55FFFFFF)
 
 // Gradients
 val GradientSkyStart = Color(0xFFE6F2FF)

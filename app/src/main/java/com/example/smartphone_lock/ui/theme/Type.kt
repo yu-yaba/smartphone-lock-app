@@ -12,7 +12,7 @@ private val roundedNumbers = FontFamily.SansSerif
 val Typography = Typography(
     displayLarge = TextStyle(
         fontFamily = brandSans,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Black,
         fontSize = 32.sp,
         lineHeight = 38.sp,
         letterSpacing = (-0.5).sp,
@@ -28,49 +28,49 @@ val Typography = Typography(
     ),
     headlineLarge = TextStyle(
         fontFamily = brandSans,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Bold,
         fontSize = 24.sp,
         lineHeight = 30.sp
     ),
     headlineSmall = TextStyle(
         fontFamily = brandSans,
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.SemiBold,
         fontSize = 20.sp,
         lineHeight = 26.sp
     ),
     titleLarge = TextStyle(
         fontFamily = brandSans,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Bold,
         fontSize = 20.sp,
         lineHeight = 26.sp
     ),
     titleMedium = TextStyle(
         fontFamily = brandSans,
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.SemiBold,
         fontSize = 17.sp,
         lineHeight = 24.sp
     ),
     bodyLarge = TextStyle(
         fontFamily = brandSans,
-        fontWeight = FontWeight.Normal,
+        fontWeight = FontWeight.Medium,
         fontSize = 17.sp,
         lineHeight = 24.sp
     ),
     bodyMedium = TextStyle(
         fontFamily = brandSans,
-        fontWeight = FontWeight.Normal,
+        fontWeight = FontWeight.Medium,
         fontSize = 15.sp,
         lineHeight = 22.sp
     ),
     labelLarge = TextStyle(
         fontFamily = brandSans,
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.SemiBold,
         fontSize = 14.sp,
         lineHeight = 20.sp
     ),
     labelMedium = TextStyle(
         fontFamily = brandSans,
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.SemiBold,
         fontSize = 13.sp,
         lineHeight = 18.sp
     )
