@@ -10,6 +10,7 @@ import com.example.smartphone_lock.data.datastore.DataStoreManager
 import com.example.smartphone_lock.data.datastore.LockStatePreferences
 import com.example.smartphone_lock.service.LockMonitorService
 import com.example.smartphone_lock.service.OverlayLockService
+import com.example.smartphone_lock.service.WatchdogScheduler
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -49,12 +50,16 @@ class BootCompletedReceiver : BroadcastReceiver() {
 
                 if (!lockActive) {
                     Log.i(TAG, "No active lock state after $action; skipping service restart")
+                    WatchdogScheduler.cancelHeartbeat(appContext)
+                    WatchdogScheduler.cancelLockExpiry(appContext)
                 } else {
                     Log.i(
                         TAG,
                         "Lock active after $action (tier=$storageTier); restarting services"
                     )
                     restartLockServices(appContext)
+                    WatchdogScheduler.scheduleHeartbeat(appContext)
+                    WatchdogScheduler.scheduleLockExpiry(appContext, lockSnapshot.lockEndTimestamp)
                 }
             } catch (throwable: Throwable) {
                 Log.e(TAG, "Failed to restore lock state after boot", throwable)
@@ -73,6 +78,11 @@ class BootCompletedReceiver : BroadcastReceiver() {
         return when (action) {
             Intent.ACTION_LOCKED_BOOT_COMPLETED -> StorageTier.DEVICE_PROTECTED
             Intent.ACTION_USER_UNLOCKED -> StorageTier.CREDENTIAL_ENCRYPTED
+            Intent.ACTION_MY_PACKAGE_REPLACED -> if (context.isUserUnlocked()) {
+                StorageTier.CREDENTIAL_ENCRYPTED
+            } else {
+                StorageTier.DEVICE_PROTECTED
+            }
             Intent.ACTION_BOOT_COMPLETED -> if (context.isUserUnlocked()) {
                 StorageTier.CREDENTIAL_ENCRYPTED
             } else {
@@ -88,7 +98,8 @@ class BootCompletedReceiver : BroadcastReceiver() {
         private val SUPPORTED_ACTIONS = setOf(
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_LOCKED_BOOT_COMPLETED,
-            Intent.ACTION_USER_UNLOCKED
+            Intent.ACTION_USER_UNLOCKED,
+            Intent.ACTION_MY_PACKAGE_REPLACED
         )
 
         private data class LockSnapshot(

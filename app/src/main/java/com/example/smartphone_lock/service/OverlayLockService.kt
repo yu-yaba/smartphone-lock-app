@@ -59,6 +59,7 @@ class OverlayLockService : Service() {
     private var lockStateJob: Job? = null
     private var deviceProtectedLockStateJob: Job? = null
     private var countdownJob: Job? = null
+    private var userUnlockWatcherJob: Job? = null
     private var foregroundStarted = false
     private var latestLockState: LockStatePreferences? = null
 
@@ -82,6 +83,11 @@ class OverlayLockService : Service() {
         serviceScope.cancel()
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        ServiceRestartScheduler.schedule(this, OverlayLockService::class.java, RESTART_REQUEST_CODE)
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun startLockDisplay() {
@@ -92,15 +98,8 @@ class OverlayLockService : Service() {
         }
         ensureForeground()
         startDeviceProtectedLockCollection()
-        if (lockStateJob == null) {
-            lockStateJob = serviceScope.launch {
-                dataStoreManager.lockState.collectLatest { state ->
-                    handleLockState(state)
-                }
-            }
-        } else {
-            latestLockState?.let { handleLockState(it) }
-        }
+        startCredentialEncryptedLockCollectionIfUnlocked()
+        latestLockState?.let { handleLockState(it) }
     }
 
     private fun stopLockDisplay(clearState: Boolean = true) {
@@ -110,6 +109,8 @@ class OverlayLockService : Service() {
         lockStateJob = null
         deviceProtectedLockStateJob?.cancel()
         deviceProtectedLockStateJob = null
+        userUnlockWatcherJob?.cancel()
+        userUnlockWatcherJob = null
         latestLockState = null
         hideOverlay()
         if (foregroundStarted) {
@@ -126,12 +127,14 @@ class OverlayLockService : Service() {
         if (isUserUnlocked()) {
             deviceProtectedLockStateJob?.cancel()
             deviceProtectedLockStateJob = null
+            startCredentialEncryptedLockCollectionIfUnlocked()
             return
         }
         if (deviceProtectedLockStateJob != null) return
         deviceProtectedLockStateJob = serviceScope.launch {
             dataStoreManager.deviceProtectedLockState.collectLatest { state ->
                 if (isUserUnlocked()) {
+                    startCredentialEncryptedLockCollectionIfUnlocked()
                     cancel("User unlocked; DP overlay updates no longer needed")
                 } else {
                     val snapshot = LockStatePreferences(
@@ -145,6 +148,39 @@ class OverlayLockService : Service() {
         }
     }
 
+    private fun startCredentialEncryptedLockCollectionIfUnlocked() {
+        if (!isUserUnlocked()) {
+            scheduleUserUnlockWatcher()
+            return
+        }
+        if (lockStateJob != null) return
+        lockStateJob = serviceScope.launch {
+            try {
+                dataStoreManager.lockState.collectLatest { state ->
+                    handleLockState(state)
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is IllegalStateException) {
+                    Log.e(TAG, "Credential-encrypted lock state unavailable", throwable)
+                } else {
+                    throw throwable
+                }
+            }
+        }
+    }
+
+    private fun scheduleUserUnlockWatcher() {
+        if (userUnlockWatcherJob?.isActive == true) return
+        userUnlockWatcherJob = serviceScope.launch {
+            while (isActive && !isUserUnlocked()) {
+                delay(COUNTDOWN_INTERVAL_MILLIS)
+            }
+            if (isActive) {
+                startCredentialEncryptedLockCollectionIfUnlocked()
+            }
+        }
+    }
+
     private fun handleLockState(state: LockStatePreferences) {
         latestLockState = state
         if (state.isLocked && state.lockEndTimestamp != null) {
@@ -152,6 +188,8 @@ class OverlayLockService : Service() {
             showOverlayIfNeeded()
             restartCountdown(state.lockEndTimestamp)
         } else {
+            WatchdogScheduler.cancelHeartbeat(this)
+            WatchdogScheduler.cancelLockExpiry(this)
             stopLockDisplay()
         }
     }
@@ -387,6 +425,7 @@ class OverlayLockService : Service() {
         private const val COUNTDOWN_INTERVAL_MILLIS = 1_000L
         private const val NOTIFICATION_ID = 1001
         private const val NOTIFICATION_CHANNEL_ID = "lock_overlay"
+        private const val RESTART_REQUEST_CODE = 9002
 
         // Sky Concept Colors (aligned with concept.md)
         private val COLOR_GRADIENT_START = Color.parseColor("#E6F2FF")
