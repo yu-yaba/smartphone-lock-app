@@ -17,11 +17,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,13 +33,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.smartphone_lock.ui.theme.SmartphoneLockTheme
-import com.example.smartphone_lock.ui.theme.elevations
 import com.example.smartphone_lock.ui.theme.gradients
 import com.example.smartphone_lock.ui.theme.radius
 import com.example.smartphone_lock.ui.theme.spacing
+import com.example.smartphone_lock.ui.theme.glass
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -92,6 +91,8 @@ fun PermissionIntroContent(
     modifier: Modifier = Modifier
 ) {
     val spacing = MaterialTheme.spacing
+    val grantedCount = listOf(state.overlayGranted, state.usageStatsGranted).count { it }
+    val progress = grantedCount / 2f
 
     Column(
         modifier = modifier
@@ -114,24 +115,75 @@ fun PermissionIntroContent(
             modifier = Modifier.fillMaxWidth(),
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.82f)
         )
-        Spacer(modifier = Modifier.height(spacing.xl))
-        Card(
+        Spacer(modifier = Modifier.height(spacing.lg))
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f, fill = false),
-            shape = RoundedCornerShape(MaterialTheme.radius.l),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f)
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = MaterialTheme.elevations.level1)
+                .background(
+                    color = MaterialTheme.glass.background,
+                    shape = RoundedCornerShape(MaterialTheme.radius.l)
+                )
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.glass.border,
+                    shape = RoundedCornerShape(MaterialTheme.radius.l)
+                )
+                .padding(horizontal = spacing.lg, vertical = spacing.lg)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(spacing.sm)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(id = R.string.permission_intro_progress, grantedCount),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "${(progress * 100).toInt()}%",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                LinearProgressIndicator(
+                    progress = { progress.coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                )
+                Text(
+                    text = stringResource(id = R.string.permission_intro_progress_hint),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(spacing.lg))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = false)
+                .background(
+                    color = MaterialTheme.glass.background,
+                    shape = RoundedCornerShape(MaterialTheme.radius.l)
+                )
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.glass.border,
+                    shape = RoundedCornerShape(MaterialTheme.radius.l)
+                )
+                .padding(horizontal = spacing.lg, vertical = spacing.lg)
         ) {
             PermissionList(
                 state = state,
                 onRequestOverlay = onRequestOverlay,
                 onRequestUsageStats = onRequestUsageStats,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = spacing.lg, vertical = spacing.lg)
+                modifier = Modifier.fillMaxWidth()
             )
         }
         Spacer(modifier = Modifier.height(spacing.lg))
@@ -145,7 +197,7 @@ fun PermissionIntroContent(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary
             ),
-            elevation = ButtonDefaults.buttonElevation(defaultElevation = MaterialTheme.elevations.level1)
+            elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp)
         ) {
             Text(text = stringResource(id = R.string.permission_intro_reload))
         }
@@ -191,22 +243,24 @@ private fun PermissionList(
 @Composable
 private fun PermissionCard(data: PermissionCardData) {
     val spacing = MaterialTheme.spacing
-    val statusColor = if (data.granted) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.error
-    }
+    val statusColor = if (data.granted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
     val badgeColor = statusColor.copy(alpha = 0.12f)
 
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = MaterialTheme.elevations.level1),
-        shape = RoundedCornerShape(MaterialTheme.radius.m),
-        modifier = Modifier.fillMaxWidth()
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = MaterialTheme.glass.background,
+                shape = RoundedCornerShape(MaterialTheme.radius.m)
+            )
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.glass.border,
+                shape = RoundedCornerShape(MaterialTheme.radius.m)
+            )
+            .padding(horizontal = spacing.lg, vertical = spacing.lg)
     ) {
-        Column(modifier = Modifier.padding(horizontal = spacing.lg, vertical = spacing.lg)) {
+        Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -236,30 +290,25 @@ private fun PermissionCard(data: PermissionCardData) {
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(spacing.sm))
             Text(
                 text = data.description,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Spacer(modifier = Modifier.height(spacing.lg))
-            Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f))
-            Spacer(modifier = Modifier.height(spacing.lg))
             Button(
                 onClick = data.onClick,
                 enabled = !data.granted,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
+                    .height(46.dp),
                 shape = RoundedCornerShape(MaterialTheme.radius.s),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                    disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f)
                 ),
-                elevation = ButtonDefaults.buttonElevation(
-                    defaultElevation = MaterialTheme.elevations.level1,
-                    disabledElevation = 0.dp
-                )
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, disabledElevation = 0.dp)
             ) {
                 Text(text = data.buttonLabel)
             }
