@@ -1,11 +1,13 @@
 package com.example.smartphone_lock
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
@@ -16,6 +18,8 @@ import com.example.smartphone_lock.navigation.AppDestination
 import com.example.smartphone_lock.ui.lock.LockScreenViewModel
 import com.example.smartphone_lock.ui.screen.LockScreen
 import com.example.smartphone_lock.ui.screen.PermissionIntroScreen
+import com.example.smartphone_lock.ui.theme.GradientSkyEnd
+import com.example.smartphone_lock.ui.theme.GradientSkyStart
 
 @Composable
 fun SmartphoneLockApp(
@@ -43,9 +47,17 @@ fun SmartphoneLockApp(
         }
     }
 
-    Surface(
-        color = MaterialTheme.colorScheme.background,
-        modifier = modifier.fillMaxSize()
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        GradientSkyStart,
+                        GradientSkyEnd
+                    )
+                )
+            )
     ) {
         NavHost(
             navController = navController,
