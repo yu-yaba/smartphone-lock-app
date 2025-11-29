@@ -3,6 +3,7 @@ package com.example.smartphone_lock.ui.theme
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -41,7 +42,25 @@ data class Elevations(
 
 data class LockGradients(
     val skyDawn: Brush = Brush.verticalGradient(
-        colors = listOf(GradientSkyStart, GradientSkyEnd)
+        colors = listOf(GradientSkyEnd, GradientSkyStart) // 上:青 → 下:白
+    )
+)
+
+/**
+ * Liquid Glass 風のサーフェス設定。
+ */
+data class GlassStyle(
+    val background: Color = GlassSurface,
+    val tint: Color = GlassSurfaceTint,
+    val border: Color = GlassBorder,
+    val blurRadius: Dp = 0.dp, // Compose の backdrop blur が未サポートのためデフォルト 0。将来置換を想定。
+    val highlight: Brush = Brush.linearGradient(
+        colors = listOf(
+            Color.White.copy(alpha = 0.35f),
+            Color.White.copy(alpha = 0.10f)
+        ),
+        start = Offset(0f, 0f),
+        end = Offset(0f, 420f)
     )
 )
 
@@ -49,3 +68,4 @@ val LocalSpacing = staticCompositionLocalOf { Spacing() }
 val LocalRadius = staticCompositionLocalOf { Radius() }
 val LocalElevations = staticCompositionLocalOf { Elevations() }
 val LocalGradients = staticCompositionLocalOf { LockGradients() }
+val LocalGlass = staticCompositionLocalOf { GlassStyle() }

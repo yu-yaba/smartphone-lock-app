@@ -53,8 +53,8 @@ fun SmartphoneLockApp(
             .background(
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        GradientSkyStart,
-                        GradientSkyEnd
+                        GradientSkyEnd,
+                        GradientSkyStart
                     )
                 )
             )

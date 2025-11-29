@@ -49,7 +49,8 @@ fun SmartphoneLockTheme(content: @Composable () -> Unit) {
         LocalSpacing provides Spacing(),
         LocalRadius provides Radius(),
         LocalElevations provides Elevations(),
-        LocalGradients provides LockGradients()
+        LocalGradients provides LockGradients(),
+        LocalGlass provides GlassStyle()
     ) {
         MaterialTheme(
             colorScheme = LockColorScheme,
@@ -76,3 +77,7 @@ val MaterialTheme.elevations: Elevations
 val MaterialTheme.gradients: LockGradients
     @Composable
     get() = LocalGradients.current
+
+val MaterialTheme.glass: GlassStyle
+    @Composable
+    get() = LocalGlass.current
