@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.util.Log
+import com.example.smartphone_lock.receiver.WatchdogReceiver
+import com.example.smartphone_lock.util.canUseExactAlarms
 
 object WatchdogScheduler {
 
@@ -55,27 +57,44 @@ object WatchdogScheduler {
             Log.w(TAG, "AlarmManager unavailable; cannot schedule $action")
             return
         }
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            requestCode,
-            Intent(context, WatchdogReceiver::class.java).setAction(action),
-            PendingIntent.FLAG_UPDATE_CURRENT or immutableFlag()
-        )
-        alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+        if (!alarmManager.canUseExactAlarms()) {
+            Log.w(TAG, "Exact alarm not allowed; schedule inexact for $action")
+            scheduleInexact(alarmManager, triggerAtMillis, pendingIntent(context, action, requestCode))
+            return
+        }
+        val pendingIntent = pendingIntent(context, action, requestCode)
+        try {
+            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+        } catch (security: SecurityException) {
+            Log.w(TAG, "Exact alarm denied; fallback to inexact for $action", security)
+            scheduleInexact(alarmManager, triggerAtMillis, pendingIntent)
+        }
     }
 
     private fun cancel(context: Context, action: String, requestCode: Int) {
         val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            requestCode,
-            Intent(context, WatchdogReceiver::class.java).setAction(action),
-            PendingIntent.FLAG_UPDATE_CURRENT or immutableFlag()
-        )
+        val pendingIntent = pendingIntent(context, action, requestCode)
         alarmManager.cancel(pendingIntent)
     }
 
     private fun immutableFlag(): Int {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+    }
+
+    private fun pendingIntent(context: Context, action: String, requestCode: Int): PendingIntent {
+        return PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            Intent(context, WatchdogReceiver::class.java).setAction(action),
+            PendingIntent.FLAG_UPDATE_CURRENT or immutableFlag()
+        )
+    }
+
+    private fun scheduleInexact(
+        alarmManager: AlarmManager,
+        triggerAtMillis: Long,
+        pendingIntent: PendingIntent
+    ) {
+        alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
     }
 }

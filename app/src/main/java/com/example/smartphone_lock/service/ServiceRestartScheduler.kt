@@ -8,6 +8,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
+import com.example.smartphone_lock.util.canUseExactAlarms
 
 object ServiceRestartScheduler {
 
@@ -29,11 +30,21 @@ object ServiceRestartScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or immutableFlag()
         )
         val triggerAt = SystemClock.elapsedRealtime() + DEFAULT_DELAY_MILLIS
-        alarmManager.setExactAndAllowWhileIdle(
-            AlarmManager.ELAPSED_REALTIME_WAKEUP,
-            triggerAt,
-            pendingIntent
-        )
+        if (alarmManager.canUseExactAlarms()) {
+            try {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                    triggerAt,
+                    pendingIntent
+                )
+            } catch (security: SecurityException) {
+                Log.w(TAG, "Exact alarm denied; fallback to inexact restart for ${serviceClass.simpleName}", security)
+                alarmManager.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pendingIntent)
+            }
+        } else {
+            Log.w(TAG, "Exact alarm not allowed; schedule inexact restart for ${serviceClass.simpleName}")
+            alarmManager.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pendingIntent)
+        }
     }
 
     fun cancel(context: Context, serviceClass: Class<out Service>, requestCode: Int) {
