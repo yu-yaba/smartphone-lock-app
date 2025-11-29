@@ -12,6 +12,8 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.example.smartphone_lock.model.LockPermissionState
+import com.example.smartphone_lock.util.canUseExactAlarms
+import com.example.smartphone_lock.util.requestExactAlarmIntent
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -63,7 +65,8 @@ class DefaultLockPermissionsRepository @Inject constructor(
     private fun readCurrentState(): LockPermissionState {
         return LockPermissionState(
             overlayGranted = Settings.canDrawOverlays(context),
-            usageStatsGranted = isUsageStatsGranted(context)
+            usageStatsGranted = isUsageStatsGranted(context),
+            exactAlarmGranted = context.canUseExactAlarms()
         )
     }
 
@@ -99,6 +102,21 @@ class DefaultLockPermissionsRepository @Inject constructor(
 
         fun usageAccessSettingsIntent(): Intent {
             return Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+        }
+
+        fun exactAlarmSettingsIntent(context: Context): Intent {
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                context.requestExactAlarmIntent()
+            } else {
+                appDetailsSettingsIntent(context)
+            }
+        }
+
+        fun appDetailsSettingsIntent(context: Context): Intent {
+            return Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:${context.packageName}")
+            )
         }
     }
 
