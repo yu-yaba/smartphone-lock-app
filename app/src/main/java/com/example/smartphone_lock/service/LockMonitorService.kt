@@ -289,21 +289,23 @@ class LockMonitorService : Service() {
             }
             lastStartElapsedRealtime = nowElapsed
 
-            val intent = Intent(context, LockMonitorService::class.java).apply {
+            val appContext = context.applicationContext
+            val intent = Intent(appContext, LockMonitorService::class.java).apply {
                 putExtra(EXTRA_START_REASON, reason)
                 putExtra(EXTRA_REQUESTED_AT, System.currentTimeMillis())
             }
             val canStartForeground =
                 Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                    context.hasPostNotificationPermissionCompat()
+                    appContext.hasPostNotificationPermissionCompat()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && canStartForeground) {
-                ContextCompat.startForegroundService(context, intent)
+                runCatching { ContextCompat.startForegroundService(appContext, intent) }
+                    .onFailure { Log.e(TAG, "Unable to start lock monitor service", it) }
             } else {
-                try {
+                runCatching {
                     @Suppress("DEPRECATION")
-                    context.startService(intent)
-                } catch (illegalStateException: IllegalStateException) {
-                    Log.e(TAG, "Unable to start lock monitor service in background", illegalStateException)
+                    appContext.startService(intent)
+                }.onFailure { throwable ->
+                    Log.e(TAG, "Unable to start lock monitor service", throwable)
                 }
             }
         }
