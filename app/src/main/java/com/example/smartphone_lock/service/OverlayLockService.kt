@@ -210,6 +210,7 @@ class OverlayLockService : Service() {
             ensureForeground()
             showOverlayIfNeeded()
             restartCountdown(effectiveState.lockEndTimestamp)
+            demoteForegroundIfNeeded("lock_state_update")
         } else {
             WatchdogScheduler.cancelHeartbeat(this)
             WatchdogScheduler.cancelLockExpiry(this)
@@ -489,22 +490,24 @@ class OverlayLockService : Service() {
             }
             lastStartElapsedRealtime = nowElapsed
 
-            val intent = Intent(context, OverlayLockService::class.java).apply {
+            val appContext = context.applicationContext
+            val intent = Intent(appContext, OverlayLockService::class.java).apply {
                 action = ACTION_START
                 putExtra(EXTRA_START_REASON, reason)
                 putExtra(EXTRA_REQUESTED_AT, System.currentTimeMillis())
             }
             val canStartForeground =
                 Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                    hasPostNotificationPermission(context)
+                    hasPostNotificationPermission(appContext)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && canStartForeground) {
-                ContextCompat.startForegroundService(context, intent)
+                runCatching { ContextCompat.startForegroundService(appContext, intent) }
+                    .onFailure { Log.e(TAG, "Unable to start overlay service", it) }
             } else {
-                try {
+                runCatching {
                     @Suppress("DEPRECATION")
-                    context.startService(intent)
-                } catch (illegalStateException: IllegalStateException) {
-                    Log.e(TAG, "Unable to start overlay service in background", illegalStateException)
+                    appContext.startService(intent)
+                }.onFailure { throwable ->
+                    Log.e(TAG, "Unable to start overlay service in background", throwable)
                 }
             }
         }
