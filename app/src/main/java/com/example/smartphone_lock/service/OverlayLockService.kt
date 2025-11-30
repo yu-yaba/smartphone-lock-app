@@ -13,6 +13,7 @@ import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.os.UserManager
 import android.provider.Settings
 import android.util.DisplayMetrics
@@ -71,6 +72,16 @@ class OverlayLockService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val reason = intent?.getStringExtra(EXTRA_START_REASON) ?: "unknown"
+        val requestedAt = intent?.getLongExtra(EXTRA_REQUESTED_AT, System.currentTimeMillis())
+            ?: System.currentTimeMillis()
+        val sinceLast = previousStartWalltime?.let { requestedAt - it }?.takeIf { it >= 0 }
+        Log.d(
+            TAG,
+            "onStartCommand action=${intent?.action} reason=$reason requestedAt=$requestedAt sinceLast=${sinceLast ?: "-"}ms"
+        )
+        previousStartWalltime = requestedAt
+
         when (intent?.action) {
             ACTION_START, null -> startLockDisplay()
             else -> Log.w(TAG, "Unknown action received: ${intent?.action}")
@@ -101,6 +112,7 @@ class OverlayLockService : Service() {
         startDeviceProtectedLockCollection()
         startCredentialEncryptedLockCollectionIfUnlocked()
         latestLockState?.let { handleLockState(it) }
+        demoteForegroundIfNeeded("lockDisplay")
     }
 
     private fun stopLockDisplay(clearState: Boolean = true) {
@@ -369,20 +381,26 @@ class OverlayLockService : Service() {
         }
         val notification = buildNotification(getString(R.string.overlay_service_notification_content))
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(
-                    NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-                )
+            val foregroundType = resolveForegroundType()
+            if (foregroundType != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification, foregroundType)
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
             foregroundStarted = true
+            Log.d(TAG, "Entered foreground for overlay type=${foregroundType ?: "none"}")
         } catch (securityException: SecurityException) {
             Log.e(TAG, "Failed to enter foreground", securityException)
             stopSelf()
         }
+    }
+
+    private fun demoteForegroundIfNeeded(reason: String) {
+        if (!foregroundStarted) return
+        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+            .onFailure { Log.w(TAG, "Failed to stop foreground ($reason)", it) }
+        foregroundStarted = false
+        Log.d(TAG, "Foreground removed (reason=$reason)")
     }
 
     private fun buildNotification(contentText: String) = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
@@ -428,6 +446,13 @@ class OverlayLockService : Service() {
             ) == PackageManager.PERMISSION_GRANTED
     }
 
+    private fun resolveForegroundType(): Int? {
+        return when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            else -> null
+        }
+    }
+
     private fun dpToPx(value: Float, metrics: DisplayMetrics): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value, metrics).toInt()
 
@@ -437,6 +462,13 @@ class OverlayLockService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val NOTIFICATION_CHANNEL_ID = "lock_overlay"
         private const val RESTART_REQUEST_CODE = 9002
+        private const val START_DEBOUNCE_MILLIS = 12_000L
+        private const val EXTRA_START_REASON = "extra_start_reason"
+        private const val EXTRA_REQUESTED_AT = "extra_requested_at"
+        private var previousStartWalltime: Long? = null
+
+        @Volatile
+        private var lastStartElapsedRealtime: Long = 0L
 
         // Sky Concept Colors (aligned with concept.md)
         private val COLOR_GRADIENT_START = Color.parseColor("#E6F2FF")
@@ -448,9 +480,19 @@ class OverlayLockService : Service() {
 
         const val ACTION_START = "com.example.smartphone_lock.action.START_LOCK"
 
-        fun start(context: Context) {
+        fun start(context: Context, reason: String = "unknown") {
+            val nowElapsed = SystemClock.elapsedRealtime()
+            val sinceLast = nowElapsed - lastStartElapsedRealtime
+            if (lastStartElapsedRealtime != 0L && sinceLast < START_DEBOUNCE_MILLIS) {
+                Log.d(TAG, "Skip start (debounced) reason=$reason sinceLast=${sinceLast}ms")
+                return
+            }
+            lastStartElapsedRealtime = nowElapsed
+
             val intent = Intent(context, OverlayLockService::class.java).apply {
                 action = ACTION_START
+                putExtra(EXTRA_START_REASON, reason)
+                putExtra(EXTRA_REQUESTED_AT, System.currentTimeMillis())
             }
             val canStartForeground =
                 Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
