@@ -78,6 +78,9 @@ fun PermissionIntroScreen(
         onRequestUsageStats = {
             launchSafe(context, DefaultLockPermissionsRepository.usageAccessSettingsIntent())
         },
+        onRequestExactAlarm = {
+            launchExactAlarmSettings(context)
+        },
         modifier = modifier
     )
 }
@@ -88,11 +91,13 @@ fun PermissionIntroContent(
     onReload: () -> Unit,
     onRequestOverlay: () -> Unit,
     onRequestUsageStats: () -> Unit,
+    onRequestExactAlarm: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val spacing = MaterialTheme.spacing
-    val grantedCount = listOf(state.overlayGranted, state.usageStatsGranted).count { it }
-    val progress = grantedCount / 2f
+    val requiredPermissions = listOf(state.overlayGranted, state.usageStatsGranted, state.exactAlarmGranted)
+    val grantedCount = requiredPermissions.count { it }
+    val progress = grantedCount / requiredPermissions.size.toFloat()
 
     Column(
         modifier = modifier
@@ -183,6 +188,7 @@ fun PermissionIntroContent(
                 state = state,
                 onRequestOverlay = onRequestOverlay,
                 onRequestUsageStats = onRequestUsageStats,
+                onRequestExactAlarm = onRequestExactAlarm,
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -209,6 +215,7 @@ private fun PermissionList(
     state: LockPermissionState,
     onRequestOverlay: () -> Unit,
     onRequestUsageStats: () -> Unit,
+    onRequestExactAlarm: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val spacing = MaterialTheme.spacing
@@ -226,6 +233,13 @@ private fun PermissionList(
             granted = state.usageStatsGranted,
             buttonLabel = stringResource(id = R.string.permission_intro_open_settings),
             onClick = onRequestUsageStats
+        ),
+        PermissionCardData(
+            title = stringResource(id = R.string.permission_intro_exact_alarm_title),
+            description = stringResource(id = R.string.permission_intro_exact_alarm_description),
+            granted = state.exactAlarmGranted,
+            buttonLabel = stringResource(id = R.string.permission_intro_open_settings),
+            onClick = onRequestExactAlarm
         )
     )
 
@@ -245,6 +259,11 @@ private fun PermissionCard(data: PermissionCardData) {
     val spacing = MaterialTheme.spacing
     val statusColor = if (data.granted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
     val badgeColor = statusColor.copy(alpha = 0.12f)
+    val statusText = if (data.granted) {
+        stringResource(id = R.string.permission_intro_status_granted)
+    } else {
+        stringResource(id = R.string.permission_intro_status_denied)
+    }
 
     Box(
         modifier = Modifier
@@ -280,11 +299,7 @@ private fun PermissionCard(data: PermissionCardData) {
                         .padding(horizontal = spacing.md, vertical = spacing.xs)
                 ) {
                     Text(
-                        text = if (data.granted) {
-                            stringResource(id = R.string.permission_intro_status_granted)
-                        } else {
-                            stringResource(id = R.string.permission_intro_status_denied)
-                        },
+                        text = statusText,
                         style = MaterialTheme.typography.labelMedium,
                         color = statusColor
                     )
@@ -335,15 +350,32 @@ private fun launchSafe(context: Context, intent: Intent) {
     }
 }
 
+private fun launchExactAlarmSettings(context: Context) {
+    val primary = DefaultLockPermissionsRepository.exactAlarmSettingsIntent(context)
+    val fallback = DefaultLockPermissionsRepository.appDetailsSettingsIntent(context)
+    primary.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        ContextCompat.startActivity(context, primary, null)
+    } catch (error: ActivityNotFoundException) {
+        try {
+            ContextCompat.startActivity(context, fallback, null)
+        } catch (ignored: ActivityNotFoundException) {
+            // どちらの設定も存在しない場合は黙って無視する
+        }
+    }
+}
+
 @Preview(showBackground = true)
 @Composable
 private fun PermissionIntroPreviewGranted() {
     SmartphoneLockTheme {
         PermissionIntroContent(
-            state = LockPermissionState(overlayGranted = true, usageStatsGranted = true),
+            state = LockPermissionState(overlayGranted = true, usageStatsGranted = true, exactAlarmGranted = true),
             onReload = {},
             onRequestOverlay = {},
-            onRequestUsageStats = {}
+            onRequestUsageStats = {},
+            onRequestExactAlarm = {}
         )
     }
 }
@@ -353,10 +385,11 @@ private fun PermissionIntroPreviewGranted() {
 private fun PermissionIntroPreviewMissing() {
     SmartphoneLockTheme {
         PermissionIntroContent(
-            state = LockPermissionState(overlayGranted = false, usageStatsGranted = false),
+            state = LockPermissionState(overlayGranted = false, usageStatsGranted = false, exactAlarmGranted = false),
             onReload = {},
             onRequestOverlay = {},
-            onRequestUsageStats = {}
+            onRequestUsageStats = {},
+            onRequestExactAlarm = {}
         )
     }
 }

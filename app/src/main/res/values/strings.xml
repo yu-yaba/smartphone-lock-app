@@ -1,8 +1,8 @@
 <resources>
     <string name="app_name">Smartphone Lock</string>
     <string name="permission_intro_title">ロックを有効にする準備</string>
-    <string name="permission_intro_description">ロックを開始する前に、次の2つの権限を許可してください。設定アプリから戻ると自動的に状態を更新します。</string>
-    <string name="permission_intro_progress">%1$d / 2 の権限が完了</string>
+    <string name="permission_intro_description">ロックを開始する前に、必須の3つの権限を許可してください。設定アプリから戻ると自動的に状態を更新します。</string>
+    <string name="permission_intro_progress">必須 %1$d / 3 完了</string>
     <string name="permission_intro_progress_hint">設定アプリから戻ると自動で状態を更新します</string>
     <string name="permission_intro_reload">権限状態を再読み込み</string>
     <string name="permission_intro_overlay_title">画面の上に表示 (Overlay)</string>
@@ -12,6 +12,8 @@
     <string name="permission_intro_open_settings">設定を開く</string>
     <string name="permission_intro_status_granted">有効</string>
     <string name="permission_intro_status_denied">未許可</string>
+    <string name="permission_intro_exact_alarm_title">正確なアラーム</string>
+    <string name="permission_intro_exact_alarm_description">ロック終了時刻やウォッチドッグを誤差なく実行するために必須です。許可しないとロックを開始できません。</string>
     <string name="lock_screen_title"></string>
     <string name="lock_screen_subtitle"></string>
     <string name="lock_screen_duration_label">ロックする時間を選択</string>

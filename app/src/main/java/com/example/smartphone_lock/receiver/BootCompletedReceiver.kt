@@ -10,6 +10,7 @@ import com.example.smartphone_lock.data.datastore.DataStoreManager
 import com.example.smartphone_lock.data.datastore.LockStatePreferences
 import com.example.smartphone_lock.service.LockMonitorService
 import com.example.smartphone_lock.service.OverlayLockService
+import com.example.smartphone_lock.service.WatchdogScheduler
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -37,24 +38,46 @@ class BootCompletedReceiver : BroadcastReceiver() {
                     dataStoreManager.syncCredentialStoreFromDeviceProtected()
                 }
 
+                val now = System.currentTimeMillis()
                 val storageTier = resolveStorageTier(appContext, action)
-                val lockSnapshot = when (storageTier) {
-                    StorageTier.CREDENTIAL_ENCRYPTED -> dataStoreManager.lockState.first().toSnapshot()
-                    StorageTier.DEVICE_PROTECTED -> dataStoreManager.deviceProtectedSnapshot().toSnapshot()
+                val ceSnapshot = runCatching { dataStoreManager.lockState.first().toSnapshot() }
+                    .onFailure {
+                        Log.w(TAG, "CE snapshot unavailable after $action; will fallback to DP", it)
+                    }
+                    .getOrNull()
+                val dpSnapshot = dataStoreManager.deviceProtectedSnapshot().toSnapshot()
+
+                val preferred = when (storageTier) {
+                    StorageTier.CREDENTIAL_ENCRYPTED -> ceSnapshot ?: dpSnapshot
+                    StorageTier.DEVICE_PROTECTED -> dpSnapshot
                 }
 
-                val now = System.currentTimeMillis()
-                val lockActive = lockSnapshot.isLocked &&
-                    (lockSnapshot.lockEndTimestamp == null || lockSnapshot.lockEndTimestamp > now)
+                val lockSnapshot = when {
+                    preferred.isActive(now) -> preferred
+                    dpSnapshot.isActive(now) -> {
+                        // CE が空だが DP にロックが残っている場合は復元を試みる
+                        if (storageTier == StorageTier.CREDENTIAL_ENCRYPTED) {
+                            dataStoreManager.syncCredentialStoreFromDeviceProtected()
+                        }
+                        dpSnapshot
+                    }
+                    else -> preferred
+                }
+
+                val lockActive = lockSnapshot.isActive(now)
 
                 if (!lockActive) {
                     Log.i(TAG, "No active lock state after $action; skipping service restart")
+                    WatchdogScheduler.cancelHeartbeat(appContext)
+                    WatchdogScheduler.cancelLockExpiry(appContext)
                 } else {
                     Log.i(
                         TAG,
                         "Lock active after $action (tier=$storageTier); restarting services"
                     )
                     restartLockServices(appContext)
+                    WatchdogScheduler.scheduleHeartbeat(appContext)
+                    WatchdogScheduler.scheduleLockExpiry(appContext, lockSnapshot.lockEndTimestamp)
                 }
             } catch (throwable: Throwable) {
                 Log.e(TAG, "Failed to restore lock state after boot", throwable)
@@ -73,6 +96,11 @@ class BootCompletedReceiver : BroadcastReceiver() {
         return when (action) {
             Intent.ACTION_LOCKED_BOOT_COMPLETED -> StorageTier.DEVICE_PROTECTED
             Intent.ACTION_USER_UNLOCKED -> StorageTier.CREDENTIAL_ENCRYPTED
+            Intent.ACTION_MY_PACKAGE_REPLACED -> if (context.isUserUnlocked()) {
+                StorageTier.CREDENTIAL_ENCRYPTED
+            } else {
+                StorageTier.DEVICE_PROTECTED
+            }
             Intent.ACTION_BOOT_COMPLETED -> if (context.isUserUnlocked()) {
                 StorageTier.CREDENTIAL_ENCRYPTED
             } else {
@@ -88,7 +116,8 @@ class BootCompletedReceiver : BroadcastReceiver() {
         private val SUPPORTED_ACTIONS = setOf(
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_LOCKED_BOOT_COMPLETED,
-            Intent.ACTION_USER_UNLOCKED
+            Intent.ACTION_USER_UNLOCKED,
+            Intent.ACTION_MY_PACKAGE_REPLACED
         )
 
         private data class LockSnapshot(
@@ -114,4 +143,7 @@ class BootCompletedReceiver : BroadcastReceiver() {
         isLocked = isLocked,
         lockEndTimestamp = lockEndTimestamp
     )
+
+    private fun LockSnapshot.isActive(now: Long): Boolean =
+        isLocked && (lockEndTimestamp == null || lockEndTimestamp > now)
 }
