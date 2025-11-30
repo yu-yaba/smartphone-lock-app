@@ -163,6 +163,7 @@ class OverlayLockService : Service() {
 
     private fun startCredentialEncryptedLockCollectionIfUnlocked() {
         if (!isUserUnlocked()) {
+            // CE ストアがまだ開かれていない場合は DP ストアのみで運用し、解錠後に再度試行する
             scheduleUserUnlockWatcher()
             return
         }
@@ -174,7 +175,9 @@ class OverlayLockService : Service() {
                 }
             } catch (throwable: Throwable) {
                 if (throwable is IllegalStateException) {
-                    Log.e(TAG, "Credential-encrypted lock state unavailable", throwable)
+                    // ユーザー未解錠等で CE にアクセスできない場合は DP スナップショットにフォールバックして継続
+                    Log.w(TAG, "CE lock state unavailable; fallback to DP snapshot until unlock", throwable)
+                    startCredentialEncryptedLockCollectionIfUnlocked()
                 } else {
                     throw throwable
                 }
