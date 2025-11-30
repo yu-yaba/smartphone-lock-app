@@ -168,7 +168,7 @@ fun LockScreenContent(
             // Push the dial card downward so it sits slightly above center
             Spacer(modifier = Modifier.weight(1f))
 
-            BoxWithConstraints(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .widthIn(max = contentMaxWidth)
