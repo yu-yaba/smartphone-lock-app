@@ -11,6 +11,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import android.os.UserManager
 import android.util.Log
 import androidx.annotation.RequiresApi
@@ -64,8 +65,19 @@ class LockMonitorService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        ensureForeground()
+        val reason = intent?.getStringExtra(EXTRA_START_REASON) ?: "unknown"
+        val requestedAt = intent?.getLongExtra(EXTRA_REQUESTED_AT, System.currentTimeMillis())
+            ?: System.currentTimeMillis()
+        val sinceLast = previousStartWalltime?.let { requestedAt - it }?.takeIf { it >= 0 }
+        Log.d(
+            TAG,
+            "onStartCommand reason=$reason requestedAt=$requestedAt sinceLast=${sinceLast ?: "-"}ms"
+        )
+        previousStartWalltime = requestedAt
+
+        ensureForeground(reason)
         startMonitoring()
+        demoteForegroundIfNeeded("startCommand")
         return START_STICKY
     }
 
@@ -163,7 +175,7 @@ class LockMonitorService : Service() {
         return "settings"
     }
 
-    private fun ensureForeground() {
+    private fun ensureForeground(reason: String) {
         if (foregroundStarted) return
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasPostNotificationPermissionCompat()) {
@@ -174,19 +186,35 @@ class LockMonitorService : Service() {
 
         val notification = buildNotification()
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(
-                    NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-                )
+            val foregroundType = resolveForegroundType()
+            if (foregroundType != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification, foregroundType)
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
             foregroundStarted = true
+            Log.d(TAG, "Entered foreground (reason=$reason type=${foregroundType ?: "none"})")
         } catch (securityException: SecurityException) {
             Log.e(TAG, "Failed to enter foreground", securityException)
             stopSelf()
+        }
+    }
+
+    private fun demoteForegroundIfNeeded(reason: String) {
+        if (!foregroundStarted) return
+        runCatching {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        }.onFailure {
+            Log.w(TAG, "Failed to stop foreground ($reason)", it)
+        }
+        foregroundStarted = false
+        Log.d(TAG, "Foreground removed (reason=$reason)")
+    }
+
+    private fun resolveForegroundType(): Int? {
+        return when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            else -> null
         }
     }
 
@@ -223,7 +251,7 @@ class LockMonitorService : Service() {
         val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$TAG:WakeLock").apply {
             setReferenceCounted(false)
-            acquire()
+            acquire(WAKE_LOCK_TIMEOUT_MILLIS)
         }
     }
 
@@ -243,20 +271,41 @@ class LockMonitorService : Service() {
         private const val RESTART_REQUEST_CODE = 9001
         private const val BLACKLIST_OVERLAY_DEBOUNCE_MILLIS = 1_000L
         private const val LOCK_UI_REDIRECT_DEBOUNCE_MILLIS = 1_500L
+        private const val START_DEBOUNCE_MILLIS = 12_000L
+        private const val WAKE_LOCK_TIMEOUT_MILLIS = 15_000L
+        private const val EXTRA_START_REASON = "extra_start_reason"
+        private const val EXTRA_REQUESTED_AT = "extra_requested_at"
+        private var previousStartWalltime: Long? = null
 
-        fun start(context: Context) {
-            val intent = Intent(context, LockMonitorService::class.java)
+        @Volatile
+        private var lastStartElapsedRealtime: Long = 0L
+
+        fun start(context: Context, reason: String = "unknown") {
+            val nowElapsed = SystemClock.elapsedRealtime()
+            val sinceLast = nowElapsed - lastStartElapsedRealtime
+            if (lastStartElapsedRealtime != 0L && sinceLast < START_DEBOUNCE_MILLIS) {
+                Log.d(TAG, "Skip start (debounced) reason=$reason sinceLast=${sinceLast}ms")
+                return
+            }
+            lastStartElapsedRealtime = nowElapsed
+
+            val appContext = context.applicationContext
+            val intent = Intent(appContext, LockMonitorService::class.java).apply {
+                putExtra(EXTRA_START_REASON, reason)
+                putExtra(EXTRA_REQUESTED_AT, System.currentTimeMillis())
+            }
             val canStartForeground =
                 Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                    context.hasPostNotificationPermissionCompat()
+                    appContext.hasPostNotificationPermissionCompat()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && canStartForeground) {
-                ContextCompat.startForegroundService(context, intent)
+                runCatching { ContextCompat.startForegroundService(appContext, intent) }
+                    .onFailure { Log.e(TAG, "Unable to start lock monitor service", it) }
             } else {
-                try {
+                runCatching {
                     @Suppress("DEPRECATION")
-                    context.startService(intent)
-                } catch (illegalStateException: IllegalStateException) {
-                    Log.e(TAG, "Unable to start lock monitor service in background", illegalStateException)
+                    appContext.startService(intent)
+                }.onFailure { throwable ->
+                    Log.e(TAG, "Unable to start lock monitor service", throwable)
                 }
             }
         }
