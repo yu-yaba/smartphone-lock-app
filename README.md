@@ -40,8 +40,8 @@ Supabase 連携は現状オプション扱いで、URL / Key が未設定でも�
 - `DefaultLockPermissionsRepository` が `Settings.canDrawOverlays` / `AppOpsManager` / `AlarmManager.canScheduleExactAlarms()` を用いて権限状態をポーリングし、`SmartphoneLockApp` が NavHost を Permission→Lock の 2 画面に制御する。
 
 ### 3.3 オーバーレイと UsageStats 監視
-- `OverlayLockService` は Foreground 通知 + フルスクリーン `WindowManager` オーバーレイで残り時間を表示し、端末ロック時は Device Protected ストアを参照する。Credential Encrypted ストアが読めない場合は DP スナップショットをフォールバックし、タスクキル時は `ServiceRestartScheduler` で再起動を予約。`formatLockRemainingTime()` を用いて 1 秒ごとに更新。
-- `LockMonitorService` は WakeLock と Foreground 通知で常駐し、`UsageWatcher`（UsageStats API）を 750ms 間隔でポーリング。`SettingsPackages` に該当する（設定／SystemUI／ホーム／音声アシスタント／インストーラ／主要ストア）アプリが前面に来た際は `OverlayManager.show()` と `LockUiLauncher.bringToFront()` で自アプリを復帰させる。
+- `OverlayLockService` は Foreground 通知 + フルスクリーン `WindowManager` オーバーレイで残り時間を表示し、端末ロック時は Device Protected ストアを参照する。Credential Encrypted ストアが読めない場合は DP スナップショットへフォールバックしつつ継続し、タスクキル時は `ServiceRestartScheduler` で再起動を予約。起動直後に foreground を即時降格する短時間FGS運用で通知シェードに残りにくくしている。`formatLockRemainingTime()` を用いて 1 秒ごとに更新。
+- `LockMonitorService` は WakeLock と Foreground 通知で常駐し、`UsageWatcher`（UsageStats API）を 750ms 間隔でポーリング。`SettingsPackages` に該当する（設定／SystemUI／ホーム／音声アシスタント／インストーラ／主要ストア）アプリが前面に来た際は `OverlayManager.show()` と `LockUiLauncher.bringToFront()` で自アプリを復帰させる。Foreground は dataSync 種別のみを使用し、起動直後に降格する。
 - `PackageEventThrottler` で Overlay 再描画と再起動をデバウンスし、`ServiceRestartScheduler` が `LockMonitorService` / `OverlayLockService` の強制終了後再起動を共通化。
 - オーバーレイは全画面タッチを食い止め、カットアウト領域まで覆うレイアウトを採用。デバッグビルドのみ赤い即時解除ボタンを表示する。
 - `UsageStatsForegroundAppEventSource.collectRecentEvents` は SecurityException などを握りつぶし、監視が落ちないよう防御的にラップしている。
