@@ -35,6 +35,16 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".service.LockRedirectActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SmartphoneLock.Redirect"
+            android:excludeFromRecents="true"
+            android:finishOnTaskLaunch="true"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:noHistory="true" />
+
         <service
             android:name=".service.OverlayLockService"
             android:exported="false"
