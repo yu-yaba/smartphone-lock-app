@@ -38,12 +38,20 @@ class UsageWatcher @Inject constructor(
     }
 
     private suspend fun pollUsageEvents(onMoveToForeground: (String) -> Unit) {
+        var lastKnownForeground: String? = null
         while (coroutineContext.isActive) {
+            var eventEmitted = false
             try {
                 eventSource.collectRecentEvents(QUERY_WINDOW_MILLIS) { packageName ->
-                    if (packageName.isNotBlank()) {
-                        onMoveToForeground(packageName)
+                    val normalized = packageName.trim()
+                    if (normalized.isNotEmpty()) {
+                        lastKnownForeground = normalized
+                        eventEmitted = true
+                        onMoveToForeground(normalized)
                     }
+                }
+                if (!eventEmitted) {
+                    lastKnownForeground?.let { onMoveToForeground(it) }
                 }
             } catch (security: SecurityException) {
                 Log.w(TAG, "Usage access permission missing", security)
