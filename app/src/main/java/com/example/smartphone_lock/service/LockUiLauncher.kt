@@ -3,7 +3,6 @@ package com.example.smartphone_lock.service
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import com.example.smartphone_lock.MainActivity
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -17,11 +16,13 @@ class LockUiLauncher @Inject constructor(
 ) {
 
     fun bringToFront() {
-        val intent = Intent(context, MainActivity::class.java).apply {
+        val intent = Intent(context, LockRedirectActivity::class.java).apply {
             addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS or
+                    Intent.FLAG_ACTIVITY_NO_ANIMATION
             )
         }
         runCatching { context.startActivity(intent) }
