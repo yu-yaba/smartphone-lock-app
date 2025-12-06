@@ -68,6 +68,21 @@
             </intent-filter>
         </receiver>
 
+        <!-- Hilt 初期化前でもロック復元を最速で試みる軽量レシーバ -->
+        <receiver
+            android:name=".receiver.BootFastStartupReceiver"
+            android:enabled="true"
+            android:directBootAware="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.USER_UNLOCKED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="com.example.smartphone_lock.action.BOOT_FAST_RETRY" />
+            </intent-filter>
+        </receiver>
+
         <receiver
             android:name=".receiver.WatchdogReceiver"
             android:enabled="true"
