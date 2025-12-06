@@ -28,6 +28,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 /**
  * ForegroundService として常駐し UsageStats 監視を行うサービス。
@@ -55,6 +57,7 @@ class LockMonitorService : Service() {
     @Volatile
     private var isLocked: Boolean = false
     private var foregroundStarted = false
+    private var forcedRedirectJob: Job? = null
     private val overlayThrottler = PackageEventThrottler(BLACKLIST_OVERLAY_DEBOUNCE_MILLIS)
     private val lockUiRedirectThrottler = PackageEventThrottler(LOCK_UI_REDIRECT_DEBOUNCE_MILLIS)
 
@@ -142,7 +145,8 @@ class LockMonitorService : Service() {
     private fun updateCurrentLockState(nextState: Boolean) {
         isLocked = nextState
         if (nextState) {
-            overlayManager.show()
+            // ロック開始時は確実に即時オーバーレイを掲出したいのでデバウンスを無視する
+            overlayManager.show(bypassDebounce = true)
         }
     }
 
@@ -157,13 +161,24 @@ class LockMonitorService : Service() {
     }
 
     private suspend fun handleForcedRedirect(packageName: String, reason: String) {
-        handleBlacklistedPackage(packageName, reason)
-        val shouldLaunch = lockUiRedirectThrottler.shouldTrigger(packageName)
-        if (shouldLaunch) {
-            Log.d(TAG, "Launching lock UI for package=$packageName reason=$reason")
-            lockUiLauncher.bringToFront()
-        } else {
-            Log.v(TAG, "Skip lock UI launch (debounced) for package=$packageName reason=$reason")
+        startForcedRedirectBurst(packageName, reason)
+    }
+
+    private fun startForcedRedirectBurst(packageName: String, reason: String) {
+        forcedRedirectJob?.cancel()
+        forcedRedirectJob = serviceScope.launch {
+            val start = SystemClock.elapsedRealtime()
+            var iteration = 0
+            while (isActive && isLocked && SystemClock.elapsedRealtime() - start <= FORCED_REDIRECT_BURST_MILLIS) {
+                iteration++
+                // Overlay 再掲出（デバウンス無効化）
+                runCatching { overlayManager.show(bypassDebounce = true) }
+                    .onFailure { Log.w(TAG, "Failed to force overlay (iteration=$iteration)", it) }
+                // 自前 UI を最前面へ
+                runCatching { lockUiLauncher.bringToFront() }
+                    .onFailure { Log.w(TAG, "Failed to bring lock UI (iteration=$iteration)", it) }
+                delay(FORCED_REDIRECT_INTERVAL_MILLIS)
+            }
         }
     }
 
@@ -271,6 +286,8 @@ class LockMonitorService : Service() {
         private const val RESTART_REQUEST_CODE = 9001
         private const val BLACKLIST_OVERLAY_DEBOUNCE_MILLIS = 1_000L
         private const val LOCK_UI_REDIRECT_DEBOUNCE_MILLIS = 1_500L
+        private const val FORCED_REDIRECT_BURST_MILLIS = 5_000L
+        private const val FORCED_REDIRECT_INTERVAL_MILLIS = 400L
         private const val START_DEBOUNCE_MILLIS = 12_000L
         private const val WAKE_LOCK_TIMEOUT_MILLIS = 15_000L
         private const val EXTRA_START_REASON = "extra_start_reason"
@@ -280,10 +297,10 @@ class LockMonitorService : Service() {
         @Volatile
         private var lastStartElapsedRealtime: Long = 0L
 
-        fun start(context: Context, reason: String = "unknown") {
+        fun start(context: Context, reason: String = "unknown", bypassDebounce: Boolean = false) {
             val nowElapsed = SystemClock.elapsedRealtime()
             val sinceLast = nowElapsed - lastStartElapsedRealtime
-            if (lastStartElapsedRealtime != 0L && sinceLast < START_DEBOUNCE_MILLIS) {
+            if (!bypassDebounce && lastStartElapsedRealtime != 0L && sinceLast < START_DEBOUNCE_MILLIS) {
                 Log.d(TAG, "Skip start (debounced) reason=$reason sinceLast=${sinceLast}ms")
                 return
             }

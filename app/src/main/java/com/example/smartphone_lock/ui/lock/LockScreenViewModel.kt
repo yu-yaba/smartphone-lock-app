@@ -135,8 +135,8 @@ class LockScreenViewModel @Inject constructor(
                 if (overlayRunning != shouldRunOverlay) {
                     overlayRunning = shouldRunOverlay
                     if (shouldRunOverlay) {
-                        LockMonitorService.start(appContext)
-                        OverlayLockService.start(appContext)
+                        LockMonitorService.start(appContext, bypassDebounce = true)
+                        OverlayLockService.start(appContext, bypassDebounce = true)
                     } else {
                         OverlayLockService.stop(appContext)
                         LockMonitorService.stop(appContext)
@@ -195,8 +195,8 @@ class LockScreenViewModel @Inject constructor(
         }
         viewModelScope.launch {
             dataStoreManager.updateLockState(true, lockStartTimestamp, lockEndTimestamp)
-            LockMonitorService.start(appContext)
-            OverlayLockService.start(appContext)
+            LockMonitorService.start(appContext, bypassDebounce = true)
+            OverlayLockService.start(appContext, bypassDebounce = true)
             WatchdogScheduler.scheduleHeartbeat(appContext)
             WatchdogScheduler.scheduleLockExpiry(appContext, lockEndTimestamp)
             overlayRunning = true
