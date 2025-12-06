@@ -484,10 +484,10 @@ class OverlayLockService : Service() {
 
         const val ACTION_START = "com.example.smartphone_lock.action.START_LOCK"
 
-        fun start(context: Context, reason: String = "unknown") {
+        fun start(context: Context, reason: String = "unknown", bypassDebounce: Boolean = false) {
             val nowElapsed = SystemClock.elapsedRealtime()
             val sinceLast = nowElapsed - lastStartElapsedRealtime
-            if (lastStartElapsedRealtime != 0L && sinceLast < START_DEBOUNCE_MILLIS) {
+            if (!bypassDebounce && lastStartElapsedRealtime != 0L && sinceLast < START_DEBOUNCE_MILLIS) {
                 Log.d(TAG, "Skip start (debounced) reason=$reason sinceLast=${sinceLast}ms")
                 return
             }
