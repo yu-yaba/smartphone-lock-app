@@ -1,5 +1,7 @@
 package com.example.smartphone_lock.receiver
 
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -30,6 +32,17 @@ class BootCompletedReceiver : BroadcastReceiver() {
             return
         }
 
+        // Fast path: Direct Boot 領域のスナップショットを即座に確認し、アクティブなら迷わず起動する
+        val now = System.currentTimeMillis()
+        runCatching { dataStoreManager.deviceProtectedSnapshot() }
+            .onSuccess { snapshot ->
+                if (snapshot.isLocked && (snapshot.lockEndTimestamp == null || snapshot.lockEndTimestamp > now)) {
+                    Log.i(TAG, "Fast start lock services from DP snapshot after $action")
+                    restartLockServices(context, reason = "boot_fastpath")
+                }
+            }
+            .onFailure { Log.w(TAG, "DP snapshot unavailable for fast start after $action", it) }
+
         val pendingResult = goAsync()
         val appContext = context.applicationContext
         CoroutineScope(Dispatchers.Default).launch {
@@ -38,7 +51,6 @@ class BootCompletedReceiver : BroadcastReceiver() {
                     dataStoreManager.syncCredentialStoreFromDeviceProtected()
                 }
 
-                val now = System.currentTimeMillis()
                 val storageTier = resolveStorageTier(appContext, action)
                 val ceSnapshot = runCatching { dataStoreManager.lockState.first().toSnapshot() }
                     .onFailure {
@@ -75,9 +87,11 @@ class BootCompletedReceiver : BroadcastReceiver() {
                         TAG,
                         "Lock active after $action (tier=$storageTier); restarting services"
                     )
-                    restartLockServices(appContext)
+                    restartLockServices(appContext, reason = "boot_restore")
                     WatchdogScheduler.scheduleHeartbeat(appContext)
                     WatchdogScheduler.scheduleLockExpiry(appContext, lockSnapshot.lockEndTimestamp)
+                    // 念のため再試行をセット（初期化競合対策）。Fastレシーバが登録されていても保険として残す。
+                    scheduleRetry(appContext)
                 }
             } catch (throwable: Throwable) {
                 Log.e(TAG, "Failed to restore lock state after boot", throwable)
@@ -87,9 +101,27 @@ class BootCompletedReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun restartLockServices(context: Context) {
-        LockMonitorService.start(context)
-        OverlayLockService.start(context)
+    private fun scheduleRetry(context: Context) {
+        val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return
+        val intent = Intent(context, BootFastStartupReceiver::class.java).apply {
+            action = BootFastStartupReceiver.ACTION_RETRY
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            BootFastStartupReceiver.RETRY_REQUEST_CODE,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val triggerAt = System.currentTimeMillis() + RETRY_DELAY_MILLIS
+        runCatching {
+            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+        }.onFailure { Log.w(TAG, "Failed to schedule boot retry", it) }
+    }
+
+    private fun restartLockServices(context: Context, reason: String) {
+        // ブート直後はデバウンス不要。確実に立ち上げる。
+        LockMonitorService.start(context, reason = reason, bypassDebounce = true)
+        OverlayLockService.start(context, reason = reason, bypassDebounce = true)
     }
 
     private fun resolveStorageTier(context: Context, action: String): StorageTier {
@@ -112,6 +144,7 @@ class BootCompletedReceiver : BroadcastReceiver() {
 
     private companion object {
         private const val TAG = "BootCompletedReceiver"
+        internal const val RETRY_DELAY_MILLIS = 4_000L
 
         private val SUPPORTED_ACTIONS = setOf(
             Intent.ACTION_BOOT_COMPLETED,
