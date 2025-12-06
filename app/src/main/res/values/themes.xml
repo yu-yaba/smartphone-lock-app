@@ -4,11 +4,12 @@
 
     <!-- 透過＋無アニメーションで一瞬だけ前面に出すためのテーマ -->
     <style name="Theme.SmartphoneLock.Redirect" parent="Theme.SmartphoneLock">
-        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowIsTranslucent">false</item>
         <item name="android:windowNoTitle">true</item>
-        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowBackground">@android:color/black</item>
         <item name="android:windowAnimationStyle">@android:style/Animation.Translucent</item>
-        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:backgroundDimEnabled">true</item>
         <item name="android:windowDisablePreview">true</item>
+        <item name="android:windowFullscreen">true</item>
     </style>
 </resources>
