@@ -1,0 +1,14 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <receiver
+            android:name=".receiver.TestControlReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="com.example.smartphone_lock.action.TEST_LOCK" />
+                <action android:name="com.example.smartphone_lock.action.TEST_UNLOCK" />
+                <action android:name="com.example.smartphone_lock.action.TEST_STATUS" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
