@@ -12,6 +12,8 @@ import kotlinx.coroutines.launch
 import com.example.smartphone_lock.service.LockMonitorService
 import com.example.smartphone_lock.service.OverlayLockService
 import com.example.smartphone_lock.service.WatchdogScheduler
+import com.example.smartphone_lock.service.WatchdogWorkScheduler
+import android.os.UserManager
 
 /**
  * Hilt 初期化を待たずに Direct Boot ストアだけを参照して、ロック中なら即座にサービスを起動する軽量レシーバ。
@@ -40,9 +42,15 @@ class BootFastStartupReceiver : BroadcastReceiver() {
                     Log.i(TAG, "Fast boot start: locked state detected in DP store (retry=$retrying)")
                     LockMonitorService.start(appContext, reason = "boot_fast_receiver", bypassDebounce = true)
                     OverlayLockService.start(appContext, reason = "boot_fast_receiver", bypassDebounce = true)
-                    // ウォッチドッグも即時復元
-                    WatchdogScheduler.scheduleHeartbeat(appContext)
+                    // ウォッチドッグも即時復元（WorkManager は解錠後のみ）
+                    WatchdogScheduler.scheduleHeartbeat(appContext, immediate = true)
                     WatchdogScheduler.scheduleLockExpiry(appContext, lockEnd)
+                    if (appContext.isUserUnlocked()) {
+                        WatchdogWorkScheduler.schedule(appContext, delayMillis = 0L)
+                    } else {
+                        Log.i(TAG, "Skip WorkManager schedule (user locked)")
+                        WatchdogWorkScheduler.cancel(appContext)
+                    }
                     // 念のため複数回再試行（初期化競合や描画拒否対策）
                     if (!retrying) {
                         scheduleRetry(appContext, RETRY_DELAY_MILLIS)
@@ -93,3 +101,6 @@ class BootFastStartupReceiver : BroadcastReceiver() {
         )
     }
 }
+
+private fun Context.isUserUnlocked(): Boolean =
+    getSystemService(UserManager::class.java)?.isUserUnlocked ?: true
