@@ -13,6 +13,7 @@ import com.example.smartphone_lock.data.datastore.LockStatePreferences
 import com.example.smartphone_lock.service.LockMonitorService
 import com.example.smartphone_lock.service.OverlayLockService
 import com.example.smartphone_lock.service.WatchdogScheduler
+import com.example.smartphone_lock.service.WatchdogWorkScheduler
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -51,6 +52,11 @@ class BootCompletedReceiver : BroadcastReceiver() {
                     dataStoreManager.syncCredentialStoreFromDeviceProtected()
                 }
 
+                if (!appContext.isUserUnlocked()) {
+                    // Direct Boot 中は残存 WorkManager を止め、Alarm のみに依存する
+                    WatchdogWorkScheduler.cancel(appContext)
+                }
+
                 val storageTier = resolveStorageTier(appContext, action)
                 val ceSnapshot = runCatching { dataStoreManager.lockState.first().toSnapshot() }
                     .onFailure {
@@ -82,14 +88,21 @@ class BootCompletedReceiver : BroadcastReceiver() {
                     Log.i(TAG, "No active lock state after $action; skipping service restart")
                     WatchdogScheduler.cancelHeartbeat(appContext)
                     WatchdogScheduler.cancelLockExpiry(appContext)
+                    WatchdogWorkScheduler.cancel(appContext)
                 } else {
                     Log.i(
                         TAG,
                         "Lock active after $action (tier=$storageTier); restarting services"
                     )
                     restartLockServices(appContext, reason = "boot_restore")
-                    WatchdogScheduler.scheduleHeartbeat(appContext)
+                    WatchdogScheduler.scheduleHeartbeat(appContext, immediate = true)
                     WatchdogScheduler.scheduleLockExpiry(appContext, lockSnapshot.lockEndTimestamp)
+                    if (appContext.isUserUnlocked()) {
+                        WatchdogWorkScheduler.schedule(appContext, delayMillis = 0L)
+                    } else {
+                        Log.i(TAG, "Skip WorkManager schedule (user locked)")
+                        WatchdogWorkScheduler.cancel(appContext)
+                    }
                     // 念のため再試行をセット（初期化競合対策）。Fastレシーバが登録されていても保険として残す。
                     scheduleRetry(appContext)
                 }
