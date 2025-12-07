@@ -13,6 +13,7 @@ import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.os.SystemClock
 import android.os.UserManager
 import android.provider.Settings
@@ -64,6 +65,7 @@ class OverlayLockService : Service() {
     private var deviceProtectedSnapshot: LockStatePreferences? = null
     private var foregroundStarted = false
     private var latestLockState: LockStatePreferences? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -108,6 +110,7 @@ class OverlayLockService : Service() {
             stopLockDisplay()
             return
         }
+        acquireWakeLock()
         ensureForeground()
         startDeviceProtectedLockCollection()
         startCredentialEncryptedLockCollectionIfUnlocked()
@@ -126,6 +129,7 @@ class OverlayLockService : Service() {
         userUnlockWatcherJob = null
         latestLockState = null
         hideOverlay()
+        releaseWakeLock()
         if (foregroundStarted) {
             stopForeground(STOP_FOREGROUND_REMOVE)
             foregroundStarted = false
@@ -376,6 +380,26 @@ class OverlayLockService : Service() {
         overlayContainer = null
     }
 
+    private fun acquireWakeLock() {
+        val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
+        if (wakeLock?.isHeld == true) return
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$TAG:WakeLock").apply {
+            setReferenceCounted(false)
+            acquire(WAKE_LOCK_TIMEOUT_MILLIS)
+        }
+        Log.d(TAG, "WakeLock acquired timeout=${WAKE_LOCK_TIMEOUT_MILLIS}ms")
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let { lock ->
+            if (lock.isHeld) {
+                lock.release()
+                Log.d(TAG, "WakeLock released")
+            }
+        }
+        wakeLock = null
+    }
+
     private fun ensureForeground() {
         if (foregroundStarted) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasPostNotificationPermission()) {
@@ -467,8 +491,12 @@ class OverlayLockService : Service() {
         private const val NOTIFICATION_CHANNEL_ID = "lock_overlay"
         private const val RESTART_REQUEST_CODE = 9002
         private const val START_DEBOUNCE_MILLIS = 12_000L
+        private const val RESTART_DEBOUNCE_MILLIS = 3_000L
+        private const val RESTART_REASON = "service_restart"
+        private const val WAKE_LOCK_TIMEOUT_MILLIS = 180_000L
         private const val EXTRA_START_REASON = "extra_start_reason"
         private const val EXTRA_REQUESTED_AT = "extra_requested_at"
+        private const val EXTRA_DEBOUNCE_HANDLED = "extra_debounce_handled"
         private var previousStartWalltime: Long? = null
 
         @Volatile
@@ -485,19 +513,14 @@ class OverlayLockService : Service() {
         const val ACTION_START = "com.example.smartphone_lock.action.START_LOCK"
 
         fun start(context: Context, reason: String = "unknown", bypassDebounce: Boolean = false) {
-            val nowElapsed = SystemClock.elapsedRealtime()
-            val sinceLast = nowElapsed - lastStartElapsedRealtime
-            if (!bypassDebounce && lastStartElapsedRealtime != 0L && sinceLast < START_DEBOUNCE_MILLIS) {
-                Log.d(TAG, "Skip start (debounced) reason=$reason sinceLast=${sinceLast}ms")
-                return
-            }
-            lastStartElapsedRealtime = nowElapsed
+            if (shouldDebounce(reason, bypassDebounce)) return
 
             val appContext = context.applicationContext
             val intent = Intent(appContext, OverlayLockService::class.java).apply {
                 action = ACTION_START
                 putExtra(EXTRA_START_REASON, reason)
                 putExtra(EXTRA_REQUESTED_AT, System.currentTimeMillis())
+                putExtra(EXTRA_DEBOUNCE_HANDLED, true)
             }
             val canStartForeground =
                 Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
@@ -526,6 +549,19 @@ class OverlayLockService : Service() {
                     context,
                     Manifest.permission.POST_NOTIFICATIONS
                 ) == PackageManager.PERMISSION_GRANTED
+        }
+
+        private fun shouldDebounce(reason: String?, bypass: Boolean): Boolean {
+            val nowElapsed = SystemClock.elapsedRealtime()
+            if (bypass) return false
+            val debounceMillis = if (reason == RESTART_REASON) RESTART_DEBOUNCE_MILLIS else START_DEBOUNCE_MILLIS
+            val sinceLast = nowElapsed - lastStartElapsedRealtime
+            if (lastStartElapsedRealtime != 0L && sinceLast < debounceMillis) {
+                Log.d(TAG, "Skip start (debounced) reason=$reason sinceLast=${sinceLast}ms threshold=$debounceMillis")
+                return true
+            }
+            lastStartElapsedRealtime = nowElapsed
+            return false
         }
     }
 

@@ -16,6 +16,7 @@ import com.example.smartphone_lock.model.LockPermissionState
 import com.example.smartphone_lock.service.LockMonitorService
 import com.example.smartphone_lock.service.OverlayLockService
 import com.example.smartphone_lock.service.WatchdogScheduler
+import com.example.smartphone_lock.service.WatchdogWorkScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
@@ -197,8 +198,9 @@ class LockScreenViewModel @Inject constructor(
             dataStoreManager.updateLockState(true, lockStartTimestamp, lockEndTimestamp)
             LockMonitorService.start(appContext, bypassDebounce = true)
             OverlayLockService.start(appContext, bypassDebounce = true)
-            WatchdogScheduler.scheduleHeartbeat(appContext)
+            WatchdogScheduler.scheduleHeartbeat(appContext, immediate = true)
             WatchdogScheduler.scheduleLockExpiry(appContext, lockEndTimestamp)
+            WatchdogWorkScheduler.schedule(appContext, delayMillis = 0L)
             overlayRunning = true
         }
     }
@@ -215,6 +217,7 @@ class LockScreenViewModel @Inject constructor(
             LockMonitorService.stop(appContext)
             WatchdogScheduler.cancelHeartbeat(appContext)
             WatchdogScheduler.cancelLockExpiry(appContext)
+            WatchdogWorkScheduler.cancel(appContext)
             overlayRunning = false
         }
     }
