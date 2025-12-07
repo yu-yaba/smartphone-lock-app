@@ -76,6 +76,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun LockScreen(
     lockViewModel: LockScreenViewModel,
+    onNavigateToEmergencyUnlock: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -87,6 +88,7 @@ fun LockScreen(
         permissionState = permissionState,
         onStartLock = { activity?.let { lockViewModel.startLock(it) } },
         onDurationChange = lockViewModel::updateSelectedDuration,
+        onNavigateToEmergencyUnlock = onNavigateToEmergencyUnlock,
         modifier = modifier
     )
 }
@@ -97,12 +99,14 @@ fun LockScreenContent(
     permissionState: LockPermissionState,
     onStartLock: () -> Unit,
     onDurationChange: (Int, Int) -> Unit,
+    onNavigateToEmergencyUnlock: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val spacing = MaterialTheme.spacing
     val contentMaxWidth = 520.dp
     val permissionsGranted = permissionState.allGranted
     var showStartConfirm by remember { mutableStateOf(false) }
+    var showEmergencyConfirm by remember { mutableStateOf(false) }
 
     Box(
         modifier = modifier
@@ -113,17 +117,27 @@ fun LockScreenContent(
         Column(
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(spacing.lg)
-        ) {
-            if (showStartConfirm) {
-                StartLockConfirmDialog(
-                    onConfirm = {
-                        showStartConfirm = false
-                        onStartLock()
-                    },
-                    onDismiss = { showStartConfirm = false }
-                )
-            }
+        verticalArrangement = Arrangement.spacedBy(spacing.lg)
+    ) {
+        if (showStartConfirm) {
+            StartLockConfirmDialog(
+                onConfirm = {
+                    showStartConfirm = false
+                    onStartLock()
+                },
+                onDismiss = { showStartConfirm = false }
+            )
+        }
+
+        if (showEmergencyConfirm) {
+            EmergencyUnlockConfirmDialog(
+                onConfirm = {
+                    showEmergencyConfirm = false
+                    onNavigateToEmergencyUnlock()
+                },
+                onDismiss = { showEmergencyConfirm = false }
+            )
+        }
             val title = stringResource(id = R.string.lock_screen_title)
             val subtitle = stringResource(id = R.string.lock_screen_subtitle)
 
@@ -154,15 +168,6 @@ fun LockScreenContent(
                         )
                     }
                 }
-            }
-
-            if (uiState.isLocked) {
-                LockStatusRow(
-                    uiState = uiState,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .widthIn(max = contentMaxWidth)
-                )
             }
 
             // Push the dial card downward so it sits slightly above center
@@ -298,6 +303,7 @@ fun LockScreenContent(
                     style = MaterialTheme.typography.titleMedium
                 )
             }
+
         }
     }
 }
@@ -731,6 +737,37 @@ private fun StartLockConfirmDialog(
 }
 
 @Composable
+private fun EmergencyUnlockConfirmDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+        titleContentColor = MaterialTheme.colorScheme.onSurface,
+        textContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        title = { Text(text = stringResource(id = R.string.emergency_unlock_confirm_title)) },
+        text = { Text(text = stringResource(id = R.string.emergency_unlock_confirm_message)) },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Text(text = stringResource(id = R.string.emergency_unlock_confirm_positive))
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Text(text = stringResource(id = R.string.emergency_unlock_confirm_negative))
+            }
+        }
+    )
+}
+
+@Composable
 private fun formatRemainingTime(remainingMillis: Long): String {
     val context = LocalContext.current
     return remember(remainingMillis, context) {
@@ -751,7 +788,8 @@ private fun LockScreenPreview() {
             ),
             permissionState = LockPermissionState(overlayGranted = true, usageStatsGranted = true),
             onStartLock = {},
-            onDurationChange = { _, _ -> }
+            onDurationChange = { _, _ -> },
+            onNavigateToEmergencyUnlock = {}
         )
     }
 }
@@ -769,7 +807,8 @@ private fun LockScreenMissingPermissionPreview() {
             ),
             permissionState = LockPermissionState(overlayGranted = false, usageStatsGranted = true),
             onStartLock = {},
-            onDurationChange = { _, _ -> }
+            onDurationChange = { _, _ -> },
+            onNavigateToEmergencyUnlock = {}
         )
     }
 }

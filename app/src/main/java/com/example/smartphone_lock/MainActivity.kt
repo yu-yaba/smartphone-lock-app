@@ -1,11 +1,15 @@
 package com.example.smartphone_lock
 
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.example.smartphone_lock.config.SupabaseConfigRepository
 import com.example.smartphone_lock.ui.theme.SmartphoneLockTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -14,6 +18,8 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    private val initialRouteState = mutableStateOf<InitialRoute?>(null)
 
     @Inject
     @JvmField
@@ -24,6 +30,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        initialRouteState.value = InitialRoute(intent?.getStringExtra(EXTRA_NAV_ROUTE))
         setContent {
             SmartphoneLockTheme {
                 val supabaseConfig = remember { supabaseConfigRepository.fetch() }
@@ -41,12 +48,24 @@ class MainActivity : ComponentActivity() {
                         } ?: Log.i(TAG, "Supabase client not initialized (disabled)")
                     }
                 }
-                SmartphoneLockApp()
+                SmartphoneLockApp(initialRoute = initialRouteState.value)
             }
         }
     }
 
-    private companion object {
+    override fun onNewIntent(intent: android.content.Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        initialRouteState.value = InitialRoute(intent?.getStringExtra(EXTRA_NAV_ROUTE))
+    }
+
+    companion object {
+        const val EXTRA_NAV_ROUTE = "extra_nav_route"
         const val TAG = "MainActivity"
     }
 }
+
+data class InitialRoute(
+    val route: String?,
+    val nonce: Long = SystemClock.uptimeMillis()
+)

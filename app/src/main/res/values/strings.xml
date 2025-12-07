@@ -48,4 +48,18 @@
     <string name="lock_monitor_notification_channel">ロック監視</string>
     <string name="lock_monitor_notification_title">使用状況を監視中</string>
     <string name="lock_monitor_notification_content">ロックを維持するために監視しています</string>
+    <string name="overlay_emergency_unlock">緊急解除へ</string>
+    <string name="lock_screen_emergency_unlock_button">緊急解除（宣言文入力）</string>
+    <string name="emergency_unlock_confirm_title">本当にロックを解除しますか？</string>
+    <string name="emergency_unlock_confirm_message">スマホのロックを解除しようとしています。この後、長い宣言文を一字一句正確に入力できた場合のみ解除されます。衝動的な解除はおすすめしませんが、それでも続行しますか？</string>
+    <string name="emergency_unlock_confirm_positive">続行する</string>
+    <string name="emergency_unlock_confirm_negative">やめる</string>
+    <string name="emergency_unlock_title">緊急解除の宣言文</string>
+    <string name="emergency_unlock_subtitle">下の宣言文を最後まで正確に入力できたときのみロックを解除できます。コピー＆ペーストは使用できません。</string>
+    <string name="emergency_unlock_progress">現在 %1$d / %2$d 文字入力</string>
+    <string name="emergency_unlock_hint_exact_match">宣言文と完全に一致したときだけロックが解除されます。</string>
+    <string name="emergency_unlock_mismatch_from_index">%1$d 文字目から一致していません。</string>
+    <string name="emergency_unlock_action_unlock">ロック解除</string>
+    <string name="emergency_unlock_action_back">ロック画面に戻る</string>
+    <string name="emergency_unlock_input_hint">ここに宣言文を一字一句そのまま入力してください</string>
 </resources>

@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -15,7 +17,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.smartphone_lock.navigation.AppDestination
+import com.example.smartphone_lock.ui.emergency.EmergencyUnlockViewModel
 import com.example.smartphone_lock.ui.lock.LockScreenViewModel
+import com.example.smartphone_lock.ui.screen.EmergencyUnlockScreen
 import com.example.smartphone_lock.ui.screen.LockScreen
 import com.example.smartphone_lock.ui.screen.PermissionIntroScreen
 import com.example.smartphone_lock.ui.theme.GradientSkyEnd
@@ -24,22 +28,49 @@ import com.example.smartphone_lock.ui.theme.GradientSkyStart
 @Composable
 fun SmartphoneLockApp(
     modifier: Modifier = Modifier,
-    lockViewModel: LockScreenViewModel = hiltViewModel()
+    lockViewModel: LockScreenViewModel = hiltViewModel(),
+    initialRoute: InitialRoute? = null
 ) {
     val navController = rememberNavController()
     val permissionState = lockViewModel.permissionState.collectAsStateWithLifecycle()
     val currentBackStackEntry = navController.currentBackStackEntryAsState().value
-    val startDestination = if (permissionState.value.allGranted) {
-        AppDestination.Lock.route
-    } else {
-        AppDestination.Permission.route
+    val initialRouteConsumed = remember(initialRoute?.nonce) { mutableStateOf(initialRoute?.route.isNullOrBlank()) }
+    val initialRouteValue = initialRoute?.route
+    val startDestination = when {
+        !permissionState.value.allGranted -> AppDestination.Permission.route
+        !initialRouteValue.isNullOrBlank() -> initialRouteValue
+        else -> AppDestination.Lock.route
     }
 
     LaunchedEffect(Unit) {
         lockViewModel.refreshPermissions()
     }
 
-    LaunchedEffect(permissionState.value.allGranted, currentBackStackEntry?.destination?.route) {
+    LaunchedEffect(initialRouteValue, initialRoute?.nonce, permissionState.value.allGranted) {
+        val route = initialRouteValue
+        if (permissionState.value.allGranted && !route.isNullOrBlank()) {
+            navController.navigate(route) {
+                launchSingleTop = true
+                restoreState = false
+                popUpTo(navController.graph.startDestinationId) {
+                    inclusive = true
+                    saveState = false
+                }
+            }
+            initialRouteConsumed.value = true
+        }
+    }
+
+    LaunchedEffect(
+        permissionState.value.allGranted,
+        currentBackStackEntry?.destination?.route,
+        initialRouteConsumed.value,
+        initialRoute?.nonce
+    ) {
+        if (!initialRouteConsumed.value && permissionState.value.allGranted) {
+            // 初回の緊急解除ルート遷移を優先し、強制リダイレクトを抑制
+            return@LaunchedEffect
+        }
         val currentRoute = currentBackStackEntry?.destination?.route
         val target = determinePermissionDestination(currentRoute, permissionState.value.allGranted)
         if (target != null) {
@@ -69,7 +100,27 @@ fun SmartphoneLockApp(
             }
 
             composable(AppDestination.Lock.route) {
-                LockScreen(lockViewModel = lockViewModel)
+                LockScreen(
+                    lockViewModel = lockViewModel,
+                    onNavigateToEmergencyUnlock = {
+                        if (navController.currentDestination?.route != AppDestination.EmergencyUnlock.route) {
+                            navController.navigate(AppDestination.EmergencyUnlock.route)
+                        }
+                    }
+                )
+            }
+
+            composable(AppDestination.EmergencyUnlock.route) {
+                val emergencyUnlockViewModel: EmergencyUnlockViewModel = hiltViewModel()
+                EmergencyUnlockScreen(
+                    lockViewModel = lockViewModel,
+                    emergencyUnlockViewModel = emergencyUnlockViewModel,
+                    onBackToLock = {
+                        if (!navController.popBackStack()) {
+                            navController.navigate(AppDestination.Lock.route)
+                        }
+                    }
+                )
             }
         }
     }
@@ -79,15 +130,11 @@ internal fun determinePermissionDestination(
     currentRoute: String?,
     allGranted: Boolean
 ): String? {
-    val target = if (allGranted) {
-        AppDestination.Lock.route
-    } else {
-        AppDestination.Permission.route
-    }
-    return if (currentRoute == null || currentRoute != target) {
-        target
-    } else {
-        null
+    return when {
+        allGranted && currentRoute == AppDestination.Permission.route -> AppDestination.Lock.route
+        !allGranted && currentRoute != AppDestination.Permission.route -> AppDestination.Permission.route
+        currentRoute == null -> if (allGranted) AppDestination.Lock.route else AppDestination.Permission.route
+        else -> null
     }
 }
 

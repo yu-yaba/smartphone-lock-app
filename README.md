@@ -1,4 +1,4 @@
-# スマホ依存防止アプリ README（v1.8）
+# スマホ依存防止アプリ README（v1.9）
 
 ---
 
@@ -7,6 +7,7 @@
 Supabase 連携は現状オプション扱いで、URL / Key が未設定でもビルド・起動可能（クライアントは生成されず、ログのみ出力）。
 
 - **UI**: `LockScreen` のダイヤルで 1分〜24時間を設定し、残り時間のみを大型表示。開始時に確認ダイアログを挟み誤操作を防止。
+- **緊急解除**: ロック中は「緊急解除」から確認ダイアログ→宣言文全文入力チャレンジ画面へ遷移。一字一句一致した場合のみ解除ボタンが有効化され、入力欄はペースト無効。
 - **権限導入**: `PermissionIntroScreen` が Overlay / Usage に加え正確アラームを必須として案内し、Android 12 以降は設定アプリへの遷移ボタンを提供。3 つすべて許可されるまでロック開始ボタンを無効化。
 - **状態管理**: `LockScreenViewModel` + `DataStoreManager` + `DirectBootLockStateStore` でロック状態を多層保存し、再起動後も復帰。デバイス保護領域のスナップショットをフォールバックとして保持。
 - **サービス構成**: `OverlayLockService` がカウントダウン付きオーバーレイを描画し全画面タッチを食い止める。`LockMonitorService`（Foreground + UsageStats監視）が設定／SystemUI／ホーム／音声アシスタントに加え、インストーラ・主要アプリストアを検知して即座に UI を取り戻す。`WatchdogScheduler` が正確アラームで 3 分毎のハートビートとロック終了アラームを予約し、`ServiceRestartScheduler` で強制終了後の再起動を担保。デバッグビルドではオーバーレイ上に即時解除ボタンを表示。
@@ -14,13 +15,13 @@ Supabase 連携は現状オプション扱いで、URL / Key が未設定でも�
 
 ---
 
-## 2. 現在の実装スナップショット（2025/11/30 時点）
+## 2. 現在の実装スナップショット（2025/12/07 時点）
 | フェーズ | ステータス | 現状ハイライト | 次のアクション |
 |---------|------------|----------------|----------------|
 | 0. 基盤整備 | 🟢 完了 | Compose / Hilt / Navigation の土台を `gradle/libs.versions.toml` と `app/build.gradle.kts` に統合。`./gradlew assembleDebug` が安定。 | Lint / Test の CI 自動化（任意）。 |
 | 1. Supabase 設定 | 🟡 任意・無効化可 | BuildConfig から URL / Key を渡せば `SupabaseModule` でクライアント生成。未設定時は `null` を DI しログのみでスキップ。 | 実際の API 実装を行う場合に設定を投入。 |
 | 2. 権限導入 | 🟢 完了 | `PermissionIntroScreen` と `DefaultLockPermissionsRepository` が Overlay / Usage / 正確アラームを監視し、いずれか欠けると権限画面を強制表示。Android 12+ は正確アラーム設定画面へ遷移ボタンを提供。 | ロック中に権限や正確アラームが剥奪された際の復帰 UX。 |
-| 3. ロック UI + Overlay | 🟢 完了 | `LockScreen` ダイヤル UI（分ダイヤルが時間に連動する不具合を解消）、開始確認ダイアログ、`LockScreenViewModel` の DataStore 連携、`OverlayLockService` のフルスクリーン表示と Direct Boot 保存。デバッグ時のみ即時解除ボタンをオーバーレイに追加。 | Overlay 文言／アクセシビリティ調整、Alarm 連携へ布石。 |
+| 3. ロック UI + Overlay | 🟢 完了 | `LockScreen` ダイヤル UI（分ダイヤルが時間に連動する不具合を解消）、開始確認ダイアログ、`LockScreenViewModel` の DataStore 連携、`OverlayLockService` のフルスクリーン表示と Direct Boot 保存。デバッグ時のみ即時解除ボタンをオーバーレイに追加。緊急解除フロー（宣言文全文入力でのみ解除）を追加。 | Overlay 文言／アクセシビリティ調整、Alarm 連携へ布石。 |
 | 4. Foreground 監視 | 🟡 一部 | `LockMonitorService` + `UsageWatcher` が設定・SystemUI・主要ランチャー・音声アシスタント・インストーラ・主要アプリストアを検知し `OverlayManager`/`LockUiLauncher` を発火。`PackageEventThrottler` でデバウンス。 | ActivityManager フォールバックや端末依存差異への追加対策。 |
 | 5. 通知ブロック | ⚪ 未着手 | `LockNotificationListenerService` を Manifest 登録のみ。現在はロック必須権限から通知アクセスを外している。 | 通知カテゴリ判定→ `cancelNotification`、通知経由の抜け道封鎖を実装する場合に再度許可を誘導。 |
 | 6. AlarmManager 連携 | 🟡 一部 | `WatchdogScheduler` が正確アラームで 3 分毎のハートビートとロック終了アラームを予約し、`BootCompletedReceiver` が CE/DP のスナップショットを見てサービス再起動＆ウォッチドッグ再設定。`ServiceRestartScheduler` で強制終了後も `LockMonitorService` / `OverlayLockService` を再起動。 | WorkManager 自己診断や正確アラーム拒否端末へのフォールバック、解除通知 UX の設計。 |
@@ -135,6 +136,7 @@ SUPABASE_ANON_KEY=your-anon-key
 | **v1.6** | ダイヤル連動バグ修正、ロック開始確認ダイアログ追加、オーバーレイのタッチ食い止め＋デバッグ解除ボタン、ブート後復帰の確実化、UsageWatcher 例外防御 | **2025/11/22** |
 | **v1.7** | 権限変更の即時検知を追加、監視対象をインストーラ・主要アプリストアまで拡張 | **2025/11/24** |
 | **v1.8** | 正確アラーム権限を必須化し PermissionIntro を更新。Watchdog ハートビートとロック終了アラーム、サービス再起動スケジューラ、CE/DP フォールバックを追加して再起動復旧を強化 | **2025/11/30** |
+| **v1.9** | 緊急解除宣言文入力フローを追加し、コピペ防止＆一致判定付きでロック解除を許可。README を 2025/12/07 時点に更新。 | **2025/12/07** |
 
 ---
 
