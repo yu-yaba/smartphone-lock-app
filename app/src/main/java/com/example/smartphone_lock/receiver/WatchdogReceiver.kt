@@ -4,12 +4,14 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import android.os.UserManager
 import com.example.smartphone_lock.data.datastore.DataStoreManager
 import com.example.smartphone_lock.data.datastore.DeviceProtectedLockStatePreferences
 import com.example.smartphone_lock.data.datastore.LockStatePreferences
 import com.example.smartphone_lock.service.LockMonitorService
 import com.example.smartphone_lock.service.OverlayLockService
 import com.example.smartphone_lock.service.WatchdogScheduler
+import com.example.smartphone_lock.service.WatchdogWorkScheduler
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -47,11 +49,17 @@ class WatchdogReceiver : BroadcastReceiver() {
         val lockActive = snapshot.isLocked && snapshot.lockEndTimestamp?.let { it > System.currentTimeMillis() } != false
         if (!lockActive) {
             WatchdogScheduler.cancelHeartbeat(context)
+            WatchdogWorkScheduler.cancel(context)
             return
         }
         LockMonitorService.start(context)
         OverlayLockService.start(context)
         WatchdogScheduler.scheduleHeartbeat(context)
+        if (context.isUserUnlocked()) {
+            WatchdogWorkScheduler.schedule(context)
+        } else {
+            Log.d(TAG, "Skip WorkManager heartbeat (user locked)")
+        }
         if (snapshot.lockEndTimestamp != null) {
             WatchdogScheduler.scheduleLockExpiry(context, snapshot.lockEndTimestamp)
         }
@@ -66,6 +74,7 @@ class WatchdogReceiver : BroadcastReceiver() {
         }
         WatchdogScheduler.cancelHeartbeat(context)
         WatchdogScheduler.cancelLockExpiry(context)
+        WatchdogWorkScheduler.cancel(context)
         LockMonitorService.stop(context)
         OverlayLockService.stop(context)
     }
@@ -87,3 +96,6 @@ private fun DeviceProtectedLockStatePreferences.toSnapshot(): LockStatePreferenc
     lockStartTimestamp = lockStartTimestamp,
     lockEndTimestamp = lockEndTimestamp
 )
+
+private fun Context.isUserUnlocked(): Boolean =
+    getSystemService(UserManager::class.java)?.isUserUnlocked ?: true

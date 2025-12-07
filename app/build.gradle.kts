@@ -60,6 +60,8 @@ android {
         }
         debug {
             isMinifyEnabled = false
+            // For debug-only test control receiver
+            isDebuggable = true
         }
     }
     compileOptions {
@@ -97,6 +99,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.hilt.navigation.compose)
+    implementation(libs.androidx.work.runtime)
     implementation(libs.dagger.hilt.android)
     implementation(platform(libs.supabase.bom))
     implementation(libs.supabase.kt)
