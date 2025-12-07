@@ -18,6 +18,9 @@ import android.os.UserManager
 /**
  * Hilt 初期化を待たずに Direct Boot ストアだけを参照して、ロック中なら即座にサービスを起動する軽量レシーバ。
  * 端末ロック有無にかかわらず BOOT_COMPLETED 系のブロードキャストで動作する。
+ *
+ * ブート直後にブロードキャスト配送が遅延しても自力で再起動できるよう、
+ * 5s / 30s / 90s で自己再実行のアラームを複数セットする。
  */
 class BootFastStartupReceiver : BroadcastReceiver() {
 
@@ -53,8 +56,7 @@ class BootFastStartupReceiver : BroadcastReceiver() {
                     }
                     // 念のため複数回再試行（初期化競合や描画拒否対策）
                     if (!retrying) {
-                        scheduleRetry(appContext, RETRY_DELAY_MILLIS)
-                        scheduleRetry(appContext, RETRY_DELAY_LONG_MILLIS)
+                        scheduleRetries(appContext)
                     }
                 } else {
                     Log.i(TAG, "Fast boot start: no active lock state; skipping (retry=$retrying)")
@@ -65,14 +67,20 @@ class BootFastStartupReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun scheduleRetry(context: Context, delayMillis: Long) {
+    private fun scheduleRetries(context: Context) {
+        RETRY_DELAYS_MILLIS.forEachIndexed { index, delay ->
+            scheduleRetry(context, delay, RETRY_REQUEST_CODE_BASE + index)
+        }
+    }
+
+    private fun scheduleRetry(context: Context, delayMillis: Long, requestCode: Int) {
         val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return
         val intent = Intent(context, BootFastStartupReceiver::class.java).apply {
             action = ACTION_RETRY
         }
         val pendingIntent = PendingIntent.getBroadcast(
             context,
-            RETRY_REQUEST_CODE,
+            requestCode,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -83,13 +91,14 @@ class BootFastStartupReceiver : BroadcastReceiver() {
     }
 
     internal companion object {
-        private const val TAG = "BootFastStartup";
+        private const val TAG = "BootFastStartupReceiver";
         private const val PREFS_NAME = "direct_boot_lock_state"
         private const val KEY_IS_LOCKED = "is_locked"
         private const val KEY_LOCK_END_TIMESTAMP = "lock_end_timestamp"
-        internal const val RETRY_REQUEST_CODE = 9101
-        internal const val RETRY_DELAY_MILLIS = 4_000L
-        internal const val RETRY_DELAY_LONG_MILLIS = 12_000L
+        internal const val RETRY_REQUEST_CODE_BASE = 9101
+        // 互換性のため従来名も残す
+        internal const val RETRY_REQUEST_CODE = RETRY_REQUEST_CODE_BASE
+        private val RETRY_DELAYS_MILLIS = longArrayOf(5_000L, 30_000L, 90_000L)
         internal const val ACTION_RETRY = "com.example.smartphone_lock.action.BOOT_FAST_RETRY"
 
         private val SUPPORTED_ACTIONS = setOf(
