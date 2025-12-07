@@ -18,6 +18,7 @@ import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.smartphone_lock.R
+import com.example.smartphone_lock.service.EmergencyUnlockCoordinator
 import com.example.smartphone_lock.data.repository.LockRepository
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -145,8 +146,12 @@ class LockMonitorService : Service() {
     private fun updateCurrentLockState(nextState: Boolean) {
         isLocked = nextState
         if (nextState) {
-            // ロック開始時は確実に即時オーバーレイを掲出したいのでデバウンスを無視する
-            overlayManager.show(bypassDebounce = true)
+            if (EmergencyUnlockCoordinator.isInProgress()) {
+                Log.d(TAG, "Overlay suppressed during emergency unlock")
+            } else {
+                // ロック開始時は確実に即時オーバーレイを掲出したいのでデバウンスを無視する
+                overlayManager.show(bypassDebounce = true)
+            }
         }
     }
 
@@ -174,9 +179,6 @@ class LockMonitorService : Service() {
                 // Overlay 再掲出（デバウンス無効化）
                 runCatching { overlayManager.show(bypassDebounce = true) }
                     .onFailure { Log.w(TAG, "Failed to force overlay (iteration=$iteration)", it) }
-                // 自前 UI を最前面へ
-                runCatching { lockUiLauncher.bringToFront() }
-                    .onFailure { Log.w(TAG, "Failed to bring lock UI (iteration=$iteration)", it) }
                 delay(FORCED_REDIRECT_INTERVAL_MILLIS)
             }
         }

@@ -15,6 +15,10 @@ open class OverlayManager @Inject constructor(
 ) {
 
     open fun show(bypassDebounce: Boolean = false) {
+        if (EmergencyUnlockCoordinator.isInProgress()) {
+            Log.d(TAG, "Overlay suppressed: emergency unlock in progress")
+            return
+        }
         Log.d(TAG, "Requesting overlay display")
         LockMonitorService.start(context, bypassDebounce = bypassDebounce)
         OverlayLockService.start(context, bypassDebounce = bypassDebounce)

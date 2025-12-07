@@ -42,56 +42,13 @@ class LockRedirectActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 戻るキー無効化（ロック解除時にのみ閉じる）
-        onBackPressedDispatcher.addCallback(this) { /* no-op while locked */ }
-
-        // 可能な限り早くフォアグラウンドを奪取し、オーバーレイ/監視を再開する
+        // オーバーレイを前面に戻し、即終了（画面は表示しない想定）
         OverlayLockService.start(this, reason = "redirect_activity", bypassDebounce = true)
         LockMonitorService.start(this, reason = "redirect_activity", bypassDebounce = true)
-
-        // ロック解除されたら自動で閉じる
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                lockRepository.lockState.collect { state ->
-                    if (!state.isLocked) finish()
-                }
-            }
-        }
-
-        setContent {
-            SmartphoneLockTheme {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = "利用を制限しています",
-                            style = MaterialTheme.typography.headlineSmall,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Text(
-                            text = "ロック解除まで他の画面に戻れません",
-                            style = MaterialTheme.typography.bodyMedium,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f)
-                        )
-                    }
-                }
-            }
-        }
+        finish()
     }
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        // ホーム/タスク切替を試みた場合も前面を奪い返す
-        lockUiLauncher.bringToFront()
     }
 }
