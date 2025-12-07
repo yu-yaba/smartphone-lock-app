@@ -45,14 +45,6 @@
             android:excludeFromRecents="true"
             android:finishOnTaskLaunch="true" />
 
-        <activity
-            android:name=".service.LockRedirectActivity"
-            android:exported="false"
-            android:theme="@style/Theme.SmartphoneLock.Redirect"
-            android:excludeFromRecents="true"
-            android:launchMode="singleTask"
-            android:taskAffinity="com.example.smartphone_lock.lock" />
-
         <service
             android:name=".service.OverlayLockService"
             android:exported="false"

@@ -47,9 +47,6 @@ class LockMonitorService : Service() {
     @Inject
     lateinit var lockRepository: LockRepository
 
-    @Inject
-    lateinit var lockUiLauncher: LockUiLauncher
-
     private var serviceScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private var lockStateJob: Job? = null
