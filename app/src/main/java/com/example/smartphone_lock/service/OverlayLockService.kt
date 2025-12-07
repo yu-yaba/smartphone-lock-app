@@ -31,6 +31,8 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.example.smartphone_lock.BuildConfig
+import com.example.smartphone_lock.EmergencyUnlockActivity
+import com.example.smartphone_lock.service.EmergencyUnlockCoordinator
 import com.example.smartphone_lock.R
 import com.example.smartphone_lock.data.datastore.DataStoreManager
 import com.example.smartphone_lock.data.datastore.LockStatePreferences
@@ -211,7 +213,11 @@ class OverlayLockService : Service() {
         latestLockState = effectiveState
         if (effectiveState.isLocked && effectiveState.lockEndTimestamp != null) {
             ensureForeground()
-            showOverlayIfNeeded()
+            if (!EmergencyUnlockCoordinator.isInProgress()) {
+                showOverlayIfNeeded()
+            } else {
+                Log.d(TAG, "Overlay suppressed during emergency unlock")
+            }
             restartCountdown(effectiveState.lockEndTimestamp)
             demoteForegroundIfNeeded("lock_state_update")
         } else {
@@ -321,6 +327,31 @@ class OverlayLockService : Service() {
             }
         )
 
+        val emergencyButton = Button(this).apply {
+            text = getString(R.string.overlay_emergency_unlock)
+            setTextColor(COLOR_CLEAN_WHITE)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = dpToPx(12f, metrics).toFloat()
+                setColor(COLOR_PRIMARY_SKY)
+            }
+            setPadding(
+                dpToPx(14f, metrics),
+                dpToPx(10f, metrics),
+                dpToPx(14f, metrics),
+                dpToPx(10f, metrics)
+            )
+            setOnClickListener { launchEmergencyUnlock() }
+        }
+        content.addView(
+            emergencyButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dpToPx(16f, metrics)
+            }
+        )
+
         if (BuildConfig.DEBUG) {
             val debugButton = Button(this).apply {
                 text = getString(R.string.lock_screen_dev_force_unlock)
@@ -347,7 +378,7 @@ class OverlayLockService : Service() {
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply {
-                    topMargin = dpToPx(16f, metrics)
+                    topMargin = dpToPx(12f, metrics)
                 }
             )
         }
@@ -366,6 +397,24 @@ class OverlayLockService : Service() {
         overlayContainer = container
         countdownTextView = textView
         windowManager.addView(container, layoutParams)
+    }
+
+    private fun launchEmergencyUnlock() {
+        // Foreground化してから Activity を起動し、背景起動規制を回避する
+        ensureForeground()
+        EmergencyUnlockCoordinator.start()
+        val intent = Intent(this, EmergencyUnlockActivity::class.java).apply {
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+            )
+        }
+        runCatching { startActivity(intent) }
+            .onSuccess { hideOverlay() }
+            .onFailure { Log.e(TAG, "Failed to launch emergency unlock screen", it) }
     }
 
     private fun hideOverlay() {
@@ -481,6 +530,7 @@ class OverlayLockService : Service() {
         private val COLOR_TEXT_SECONDARY = Color.parseColor("#8291A8")
         private val COLOR_WARNING_RED = Color.parseColor("#FF3B30")
         private val COLOR_CLEAN_WHITE = Color.WHITE
+        private val COLOR_PRIMARY_SKY = Color.parseColor("#0A84FF")
 
         const val ACTION_START = "com.example.smartphone_lock.action.START_LOCK"
 
