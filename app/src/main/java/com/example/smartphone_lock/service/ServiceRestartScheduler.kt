@@ -14,6 +14,8 @@ object ServiceRestartScheduler {
 
     private const val TAG = "ServiceRestartScheduler"
     private const val DEFAULT_DELAY_MILLIS = 1_000L
+    internal const val EXTRA_START_REASON = "extra_start_reason"
+    private const val DEFAULT_RESTART_REASON = "service_restart"
 
     fun schedule(context: Context, serviceClass: Class<out Service>, requestCode: Int) {
         val appContext = context.applicationContext
@@ -23,10 +25,13 @@ object ServiceRestartScheduler {
             return
         }
 
+        val intent = Intent(appContext, serviceClass).apply {
+            putExtra(EXTRA_START_REASON, DEFAULT_RESTART_REASON)
+        }
         val pendingIntent = PendingIntent.getService(
             appContext,
             requestCode,
-            Intent(appContext, serviceClass),
+            intent,
             PendingIntent.FLAG_UPDATE_CURRENT or immutableFlag()
         )
         val triggerAt = SystemClock.elapsedRealtime() + DEFAULT_DELAY_MILLIS

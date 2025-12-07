@@ -12,16 +12,21 @@ import com.example.smartphone_lock.util.canUseExactAlarms
 object WatchdogScheduler {
 
     private const val TAG = "WatchdogScheduler"
-    private const val HEARTBEAT_INTERVAL_MILLIS = 3 * 60 * 1000L
+    const val HEARTBEAT_INTERVAL_MILLIS = 60_000L
     private const val HEARTBEAT_REQUEST_CODE = 8001
     private const val LOCK_EXPIRY_REQUEST_CODE = 8002
 
-    fun scheduleHeartbeat(context: Context) {
+    fun scheduleHeartbeat(context: Context, immediate: Boolean = false) {
+        val triggerAt = System.currentTimeMillis() + if (immediate) 0L else HEARTBEAT_INTERVAL_MILLIS
+        Log.d(
+            TAG,
+            "Schedule heartbeat action delay=${triggerAt - System.currentTimeMillis()}ms immediate=$immediate"
+        )
         scheduleExact(
             context.applicationContext,
             WatchdogReceiver.ACTION_HEARTBEAT,
             HEARTBEAT_REQUEST_CODE,
-            System.currentTimeMillis() + HEARTBEAT_INTERVAL_MILLIS
+            triggerAt
         )
     }
 
@@ -58,7 +63,7 @@ object WatchdogScheduler {
             return
         }
         if (!alarmManager.canUseExactAlarms()) {
-            Log.w(TAG, "Exact alarm not allowed; schedule inexact for $action")
+            Log.w(TAG, "Exact alarm not allowed; schedule inexact for $action triggerAt=$triggerAtMillis")
             scheduleInexact(alarmManager, triggerAtMillis, pendingIntent(context, action, requestCode))
             return
         }

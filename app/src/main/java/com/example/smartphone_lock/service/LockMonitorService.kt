@@ -68,16 +68,27 @@ class LockMonitorService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val reason = intent?.getStringExtra(EXTRA_START_REASON) ?: "unknown"
+        val reason = intent?.getStringExtra(EXTRA_START_REASON)
+            ?: intent?.getStringExtra(ServiceRestartScheduler.EXTRA_START_REASON)
+            ?: "unknown"
         val requestedAt = intent?.getLongExtra(EXTRA_REQUESTED_AT, System.currentTimeMillis())
             ?: System.currentTimeMillis()
         val sinceLast = previousStartWalltime?.let { requestedAt - it }?.takeIf { it >= 0 }
+        val debounceHandled = intent?.getBooleanExtra(EXTRA_DEBOUNCE_HANDLED, false) ?: false
+        if (!debounceHandled && shouldDebounce(reason, bypass = false)) {
+            Log.d(
+                TAG,
+                "onStartCommand debounced reason=$reason sinceLastElapsed=${SystemClock.elapsedRealtime() - lastStartElapsedRealtime}ms"
+            )
+            return START_STICKY
+        }
         Log.d(
             TAG,
             "onStartCommand reason=$reason requestedAt=$requestedAt sinceLast=${sinceLast ?: "-"}ms"
         )
         previousStartWalltime = requestedAt
 
+        acquireWakeLock()
         ensureForeground(reason)
         startMonitoring()
         demoteForegroundIfNeeded("startCommand")
@@ -264,16 +275,19 @@ class LockMonitorService : Service() {
 
     private fun acquireWakeLock() {
         val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
+        if (wakeLock?.isHeld == true) return
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$TAG:WakeLock").apply {
             setReferenceCounted(false)
             acquire(WAKE_LOCK_TIMEOUT_MILLIS)
         }
+        Log.d(TAG, "WakeLock acquired timeout=${WAKE_LOCK_TIMEOUT_MILLIS}ms")
     }
 
     private fun releaseWakeLock() {
         wakeLock?.let { lock ->
             if (lock.isHeld) {
                 lock.release()
+                Log.d(TAG, "WakeLock released")
             }
         }
         wakeLock = null
@@ -289,27 +303,25 @@ class LockMonitorService : Service() {
         private const val FORCED_REDIRECT_BURST_MILLIS = 5_000L
         private const val FORCED_REDIRECT_INTERVAL_MILLIS = 400L
         private const val START_DEBOUNCE_MILLIS = 12_000L
-        private const val WAKE_LOCK_TIMEOUT_MILLIS = 15_000L
+        private const val RESTART_DEBOUNCE_MILLIS = 3_000L
+        private const val RESTART_REASON = "service_restart"
+        private const val WAKE_LOCK_TIMEOUT_MILLIS = 180_000L
         private const val EXTRA_START_REASON = "extra_start_reason"
         private const val EXTRA_REQUESTED_AT = "extra_requested_at"
+        private const val EXTRA_DEBOUNCE_HANDLED = "extra_debounce_handled"
         private var previousStartWalltime: Long? = null
 
         @Volatile
         private var lastStartElapsedRealtime: Long = 0L
 
         fun start(context: Context, reason: String = "unknown", bypassDebounce: Boolean = false) {
-            val nowElapsed = SystemClock.elapsedRealtime()
-            val sinceLast = nowElapsed - lastStartElapsedRealtime
-            if (!bypassDebounce && lastStartElapsedRealtime != 0L && sinceLast < START_DEBOUNCE_MILLIS) {
-                Log.d(TAG, "Skip start (debounced) reason=$reason sinceLast=${sinceLast}ms")
-                return
-            }
-            lastStartElapsedRealtime = nowElapsed
+            if (shouldDebounce(reason, bypassDebounce)) return
 
             val appContext = context.applicationContext
             val intent = Intent(appContext, LockMonitorService::class.java).apply {
                 putExtra(EXTRA_START_REASON, reason)
                 putExtra(EXTRA_REQUESTED_AT, System.currentTimeMillis())
+                putExtra(EXTRA_DEBOUNCE_HANDLED, true)
             }
             val canStartForeground =
                 Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
@@ -330,6 +342,27 @@ class LockMonitorService : Service() {
         fun stop(context: Context) {
             val intent = Intent(context, LockMonitorService::class.java)
             context.stopService(intent)
+        }
+
+        private fun shouldDebounce(reason: String?, bypass: Boolean): Boolean {
+            val nowElapsed = SystemClock.elapsedRealtime()
+            return shouldDebounceInternal(bypass, reason, nowElapsed)
+        }
+
+        private fun shouldDebounceInternal(
+            bypass: Boolean,
+            reason: String?,
+            nowElapsed: Long
+        ): Boolean {
+            if (bypass) return false
+            val debounceMillis = if (reason == RESTART_REASON) RESTART_DEBOUNCE_MILLIS else START_DEBOUNCE_MILLIS
+            val sinceLast = nowElapsed - lastStartElapsedRealtime
+            if (lastStartElapsedRealtime != 0L && sinceLast < debounceMillis) {
+                Log.d(TAG, "Skip start (debounced) reason=$reason sinceLast=${sinceLast}ms threshold=$debounceMillis")
+                return true
+            }
+            lastStartElapsedRealtime = nowElapsed
+            return false
         }
     }
 
