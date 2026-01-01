@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.SmartphoneLock" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.UltraFocus" parent="android:Theme.Material.Light.NoActionBar" />
 
     <!-- 透過＋無アニメーションで一瞬だけ前面に出すためのテーマ -->
-    <style name="Theme.SmartphoneLock.Redirect" parent="Theme.SmartphoneLock">
+    <style name="Theme.UltraFocus.Redirect" parent="Theme.UltraFocus">
         <item name="android:windowIsTranslucent">false</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowBackground">@android:color/black</item>

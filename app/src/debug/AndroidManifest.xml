@@ -5,9 +5,9 @@
             android:exported="true"
             android:enabled="true">
             <intent-filter>
-                <action android:name="com.example.smartphone_lock.action.TEST_LOCK" />
-                <action android:name="com.example.smartphone_lock.action.TEST_UNLOCK" />
-                <action android:name="com.example.smartphone_lock.action.TEST_STATUS" />
+                <action android:name="jp.kawai.ultrafocus.action.TEST_LOCK" />
+                <action android:name="jp.kawai.ultrafocus.action.TEST_UNLOCK" />
+                <action android:name="jp.kawai.ultrafocus.action.TEST_STATUS" />
             </intent-filter>
         </receiver>
     </application>
