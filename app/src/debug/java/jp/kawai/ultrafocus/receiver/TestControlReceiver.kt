@@ -1,14 +1,14 @@
-package com.example.smartphone_lock.receiver
+package jp.kawai.ultrafocus.receiver
 
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import com.example.smartphone_lock.data.datastore.DataStoreManager
-import com.example.smartphone_lock.service.LockMonitorService
-import com.example.smartphone_lock.service.OverlayLockService
-import com.example.smartphone_lock.service.WatchdogScheduler
-import com.example.smartphone_lock.service.WatchdogWorkScheduler
+import jp.kawai.ultrafocus.data.datastore.DataStoreManager
+import jp.kawai.ultrafocus.service.LockMonitorService
+import jp.kawai.ultrafocus.service.OverlayLockService
+import jp.kawai.ultrafocus.service.WatchdogScheduler
+import jp.kawai.ultrafocus.service.WatchdogWorkScheduler
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -18,9 +18,9 @@ import kotlinx.coroutines.launch
 /**
  * Debug-only receiver for automated reboot scenarios.
  * Actions:
- * - com.example.smartphone_lock.action.TEST_LOCK   (requires extras: durationMinutes Long optional, endTimestampMillis Long optional)
- * - com.example.smartphone_lock.action.TEST_UNLOCK
- * - com.example.smartphone_lock.action.TEST_STATUS (logs current DP snapshot)
+ * - jp.kawai.ultrafocus.action.TEST_LOCK   (requires extras: durationMinutes Long optional, endTimestampMillis Long optional)
+ * - jp.kawai.ultrafocus.action.TEST_UNLOCK
+ * - jp.kawai.ultrafocus.action.TEST_STATUS (logs current DP snapshot)
  */
 @AndroidEntryPoint
 class TestControlReceiver : BroadcastReceiver() {
@@ -77,9 +77,9 @@ class TestControlReceiver : BroadcastReceiver() {
     }
 
     companion object {
-        const val ACTION_TEST_LOCK = "com.example.smartphone_lock.action.TEST_LOCK"
-        const val ACTION_TEST_UNLOCK = "com.example.smartphone_lock.action.TEST_UNLOCK"
-        const val ACTION_TEST_STATUS = "com.example.smartphone_lock.action.TEST_STATUS"
+        const val ACTION_TEST_LOCK = "jp.kawai.ultrafocus.action.TEST_LOCK"
+        const val ACTION_TEST_UNLOCK = "jp.kawai.ultrafocus.action.TEST_UNLOCK"
+        const val ACTION_TEST_STATUS = "jp.kawai.ultrafocus.action.TEST_STATUS"
         const val EXTRA_DURATION_MINUTES = "extra_duration_minutes"
         const val EXTRA_END_TIMESTAMP = "extra_end_timestamp"
         private const val DEFAULT_MINUTES = 10L
