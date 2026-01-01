@@ -23,11 +23,11 @@ fun Properties.getSanitizedProperty(key: String): String {
 }
 
 android {
-    namespace = "com.example.smartphone_lock"
+    namespace = "jp.kawai.ultrafocus"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.smartphone_lock"
+        applicationId = "jp.kawai.ultrafocus"
         minSdk = 24
         targetSdk = 36
         versionCode = 1

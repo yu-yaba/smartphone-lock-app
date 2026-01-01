@@ -14,7 +14,8 @@ Supabase 連携は現状オプション扱いで、URL / Key が未設定でも�
 
 ---
 
-## 2. 現在の実装スナップショット（2025/11/30 時点）
+## 2. 現在の実装スナップショット（2026/01/01 時点）
+更新根拠: 2026/01/01 パッケージ/アプリ名/内部識別子変更の反映
 | フェーズ | ステータス | 現状ハイライト | 次のアクション |
 |---------|------------|----------------|----------------|
 | 0. 基盤整備 | 🟢 完了 | Compose / Hilt / Navigation の土台を `gradle/libs.versions.toml` と `app/build.gradle.kts` に統合。`./gradlew assembleDebug` が安定。 | Lint / Test の CI 自動化（任意）。 |
@@ -37,7 +38,7 @@ Supabase 連携は現状オプション扱いで、URL / Key が未設定でも�
 
 ### 3.2 権限導入フロー
 - `PermissionIntroScreen` は Overlay / Usage / 正確アラームの 3 権限それぞれに説明＋設定アプリ遷移ボタンを表示し、`LifecycleEventObserver` で復帰時に再評価する。Android 12+ は正確アラーム専用の設定インテントを優先。
-- `DefaultLockPermissionsRepository` が `Settings.canDrawOverlays` / `AppOpsManager` / `AlarmManager.canScheduleExactAlarms()` を用いて権限状態をポーリングし、`SmartphoneLockApp` が NavHost を Permission→Lock の 2 画面に制御する。
+- `DefaultLockPermissionsRepository` が `Settings.canDrawOverlays` / `AppOpsManager` / `AlarmManager.canScheduleExactAlarms()` を用いて権限状態をポーリングし、`UltraFocusApp` が NavHost を Permission→Lock の 2 画面に制御する。
 
 ### 3.3 オーバーレイと UsageStats 監視
 - `OverlayLockService` は Foreground 通知 + フルスクリーン `WindowManager` オーバーレイで残り時間を表示し、端末ロック時は Device Protected ストアを参照する。Credential Encrypted ストアが読めない場合は DP スナップショットへフォールバックしつつ継続し、タスクキル時は `ServiceRestartScheduler` で再起動を予約。起動直後に foreground を即時降格する短時間FGS運用で通知シェードに残りにくくしている。`formatLockRemainingTime()` を用いて 1 秒ごとに更新。
@@ -61,21 +62,21 @@ Supabase 連携は現状オプション扱いで、URL / Key が未設定でも�
 ## 4. ディレクトリとモジュール早見表
 | パス | 役割 |
 |------|------|
-| `app/src/main/java/com/example/smartphone_lock/ui/screen` | Compose 画面 (`LockScreen`, `PermissionIntroScreen`) 。 |
-| `app/src/main/java/com/example/smartphone_lock/ui/lock` | `LockScreenViewModel` と UI 状態定義。 |
-| `app/src/main/java/com/example/smartphone_lock/service` | `OverlayLockService`, `LockMonitorService`, `UsageWatcher`, `LockUiLauncher`, `PackageEventThrottler`, `WatchdogScheduler`, `ServiceRestartScheduler` 等のサービス群。 |
-| `app/src/main/java/com/example/smartphone_lock/data/datastore` | `DataStoreManager`, `DirectBootLockStateStore`, デバイス保護領域のプリファレンス。 |
-| `app/src/main/java/com/example/smartphone_lock/data/repository` | Lock/Permission リポジトリ、`SettingsPackages` 定義。 |
-| `app/src/main/java/com/example/smartphone_lock/config` | Supabase 設定モデルとリポジトリ（未設定ならクライアント非生成）。 |
-| `app/src/main/java/com/example/smartphone_lock/di` | Hilt Module 群（DataStore / Repository / Service / Supabase）。 |
-| `app/src/main/java/com/example/smartphone_lock/navigation` | `AppDestination` など NavHost 用定義。 |
-| `app/src/main/java/com/example/smartphone_lock/receiver` | `BootCompletedReceiver`, `WatchdogReceiver`。 |
+| `app/src/main/java/jp/kawai/ultrafocus/ui/screen` | Compose 画面 (`LockScreen`, `PermissionIntroScreen`) 。 |
+| `app/src/main/java/jp/kawai/ultrafocus/ui/lock` | `LockScreenViewModel` と UI 状態定義。 |
+| `app/src/main/java/jp/kawai/ultrafocus/service` | `OverlayLockService`, `LockMonitorService`, `UsageWatcher`, `LockUiLauncher`, `PackageEventThrottler`, `WatchdogScheduler`, `ServiceRestartScheduler` 等のサービス群。 |
+| `app/src/main/java/jp/kawai/ultrafocus/data/datastore` | `DataStoreManager`, `DirectBootLockStateStore`, デバイス保護領域のプリファレンス。 |
+| `app/src/main/java/jp/kawai/ultrafocus/data/repository` | Lock/Permission リポジトリ、`SettingsPackages` 定義。 |
+| `app/src/main/java/jp/kawai/ultrafocus/config` | Supabase 設定モデルとリポジトリ（未設定ならクライアント非生成）。 |
+| `app/src/main/java/jp/kawai/ultrafocus/di` | Hilt Module 群（DataStore / Repository / Service / Supabase）。 |
+| `app/src/main/java/jp/kawai/ultrafocus/navigation` | `AppDestination` など NavHost 用定義。 |
+| `app/src/main/java/jp/kawai/ultrafocus/receiver` | `BootCompletedReceiver`, `WatchdogReceiver`。 |
 | `app/src/main/res` | Strings / Colors / Themes（黒 × 黄色）と権限文言。 |
 
 ---
 
 ## 5. ロックフロー（高レベル）
-1. アプリ起動時に `SmartphoneLockApp` の NavHost がロードされ、必須 3 権限（Overlay / Usage / 正確アラーム）のいずれかが未許可なら `PermissionIntroScreen` を表示。
+1. アプリ起動時に `UltraFocusApp` の NavHost がロードされ、必須 3 権限（Overlay / Usage / 正確アラーム）のいずれかが未許可なら `PermissionIntroScreen` を表示。
 2. すべて許可されると `LockScreen` に遷移し、ユーザーはダイヤルで 1分〜24時間を設定。`LockScreenViewModel` が選択値を DataStore に保存。
 3. 「ロック開始」で `LockScreenViewModel.startLock()` がロック開始/終了時刻を記録し、`OverlayLockService` / `LockMonitorService` を起動。`WatchdogScheduler` が 3 分ごとのハートビートと終了時刻の正確アラームを予約し、Android 13+ では `POST_NOTIFICATIONS` を即時リクエスト。
 4. `OverlayLockService` がフルスクリーンオーバーレイを描画し、残り時間を 1 秒ごとに更新しながら Foreground 通知でも表示。
