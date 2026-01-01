@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Smartphone Lock</string>
+    <string name="app_name">Ultra Focus</string>
     <string name="permission_intro_title">ロックを有効にする準備</string>
     <string name="permission_intro_description">ロックを開始する前に、必須の3つの権限を許可してください。設定アプリから戻ると自動的に状態を更新します。</string>
     <string name="permission_intro_progress">必須 %1$d / 3 完了</string>
