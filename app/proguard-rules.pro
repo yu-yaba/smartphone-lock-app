@@ -21,6 +21,6 @@
 #-renamesourcefileattribute SourceFile
 
 # Keep BuildConfig so BuildConfig.SUPABASE_* fields remain available when minified.
--keep class com.example.smartphone_lock.BuildConfig {
+-keep class jp.kawai.ultrafocus.BuildConfig {
     *;
 }
