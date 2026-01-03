@@ -16,3 +16,5 @@
 .cxx
 local.properties
 .env
+.serena/
+.worktrees/
