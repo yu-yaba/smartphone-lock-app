@@ -174,8 +174,7 @@ class LockScreenViewModel @Inject constructor(
             return
         }
         if (!ensureNotificationPermission(activity)) {
-            Log.w(TAG, "Notification permission request in-flight; postponing lock start")
-            return
+            Log.w(TAG, "Notification permission missing; continue without notification")
         }
         lockRepository.refreshDynamicLists()
         val selectedState = uiState.value
