@@ -1,9 +1,14 @@
 package jp.kawai.ultrafocus.ui.screen
 
+import android.Manifest
+import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,6 +32,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -48,6 +57,9 @@ import jp.kawai.ultrafocus.data.repository.DefaultLockPermissionsRepository
 import jp.kawai.ultrafocus.model.LockPermissionState
 import jp.kawai.ultrafocus.ui.lock.LockScreenViewModel
 
+private const val PREFS_NOTIFICATION_REQUESTED = "prefs_notification_permission"
+private const val KEY_NOTIFICATION_REQUESTED = "notification_permission_requested"
+
 @Composable
 fun PermissionIntroScreen(
     lockViewModel: LockScreenViewModel,
@@ -55,7 +67,39 @@ fun PermissionIntroScreen(
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
+    val prefs = remember {
+        context.getSharedPreferences(PREFS_NOTIFICATION_REQUESTED, Context.MODE_PRIVATE)
+    }
     val permissionState by lockViewModel.permissionState.collectAsStateWithLifecycle()
+    val activity = context as? Activity
+    var notificationRequestAttempted by rememberSaveable {
+        mutableStateOf(prefs.getBoolean(KEY_NOTIFICATION_REQUESTED, false))
+    }
+    val showNotificationPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+    val shouldShowNotificationRationale = if (
+        showNotificationPermission &&
+        !permissionState.notificationGranted &&
+        activity != null
+    ) {
+        androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(
+            activity,
+            Manifest.permission.POST_NOTIFICATIONS
+        )
+    } else {
+        false
+    }
+    val notificationNeedsSettings =
+        showNotificationPermission &&
+            !permissionState.notificationGranted &&
+            notificationRequestAttempted &&
+            !shouldShowNotificationRationale
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) {
+        prefs.edit().putBoolean(KEY_NOTIFICATION_REQUESTED, true).apply()
+        notificationRequestAttempted = true
+        lockViewModel.refreshPermissions()
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -71,6 +115,7 @@ fun PermissionIntroScreen(
 
     PermissionIntroContent(
         state = permissionState,
+        notificationNeedsSettings = notificationNeedsSettings,
         onReload = lockViewModel::refreshPermissions,
         onRequestOverlay = {
             launchSafe(context, DefaultLockPermissionsRepository.overlaySettingsIntent(context))
@@ -81,6 +126,23 @@ fun PermissionIntroScreen(
         onRequestExactAlarm = {
             launchExactAlarmSettings(context)
         },
+        onRequestNotification = {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                lockViewModel.refreshPermissions()
+                return@PermissionIntroContent
+            }
+            if (permissionState.notificationGranted) {
+                lockViewModel.refreshPermissions()
+                return@PermissionIntroContent
+            }
+            if (notificationNeedsSettings) {
+                launchSafe(context, DefaultLockPermissionsRepository.appDetailsSettingsIntent(context))
+            } else {
+                prefs.edit().putBoolean(KEY_NOTIFICATION_REQUESTED, true).apply()
+                notificationRequestAttempted = true
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        },
         modifier = modifier
     )
 }
@@ -88,16 +150,33 @@ fun PermissionIntroScreen(
 @Composable
 fun PermissionIntroContent(
     state: LockPermissionState,
+    notificationNeedsSettings: Boolean,
     onReload: () -> Unit,
     onRequestOverlay: () -> Unit,
     onRequestUsageStats: () -> Unit,
     onRequestExactAlarm: () -> Unit,
+    onRequestNotification: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val spacing = MaterialTheme.spacing
-    val requiredPermissions = listOf(state.overlayGranted, state.usageStatsGranted, state.exactAlarmGranted)
+    val showNotificationPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+    val requiredPermissions = if (showNotificationPermission) {
+        listOf(
+            state.overlayGranted,
+            state.usageStatsGranted,
+            state.exactAlarmGranted,
+            state.notificationGranted
+        )
+    } else {
+        listOf(
+            state.overlayGranted,
+            state.usageStatsGranted,
+            state.exactAlarmGranted
+        )
+    }
     val grantedCount = requiredPermissions.count { it }
-    val progress = grantedCount / requiredPermissions.size.toFloat()
+    val totalRequired = requiredPermissions.size
+    val progress = grantedCount / totalRequired.toFloat()
 
     Column(
         modifier = modifier
@@ -145,7 +224,11 @@ fun PermissionIntroContent(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = stringResource(id = R.string.permission_intro_progress, grantedCount),
+                        text = stringResource(
+                            id = R.string.permission_intro_progress,
+                            grantedCount,
+                            totalRequired
+                        ),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -186,9 +269,12 @@ fun PermissionIntroContent(
         ) {
             PermissionList(
                 state = state,
+                showNotificationPermission = showNotificationPermission,
+                notificationNeedsSettings = notificationNeedsSettings,
                 onRequestOverlay = onRequestOverlay,
                 onRequestUsageStats = onRequestUsageStats,
                 onRequestExactAlarm = onRequestExactAlarm,
+                onRequestNotification = onRequestNotification,
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -213,35 +299,59 @@ fun PermissionIntroContent(
 @Composable
 private fun PermissionList(
     state: LockPermissionState,
+    showNotificationPermission: Boolean,
+    notificationNeedsSettings: Boolean,
     onRequestOverlay: () -> Unit,
     onRequestUsageStats: () -> Unit,
     onRequestExactAlarm: () -> Unit,
+    onRequestNotification: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val spacing = MaterialTheme.spacing
-    val cards = listOf(
-        PermissionCardData(
-            title = stringResource(id = R.string.permission_intro_overlay_title),
-            description = stringResource(id = R.string.permission_intro_overlay_description),
-            granted = state.overlayGranted,
-            buttonLabel = stringResource(id = R.string.permission_intro_open_settings),
-            onClick = onRequestOverlay
-        ),
-        PermissionCardData(
-            title = stringResource(id = R.string.permission_intro_usage_title),
-            description = stringResource(id = R.string.permission_intro_usage_description),
-            granted = state.usageStatsGranted,
-            buttonLabel = stringResource(id = R.string.permission_intro_open_settings),
-            onClick = onRequestUsageStats
-        ),
-        PermissionCardData(
-            title = stringResource(id = R.string.permission_intro_exact_alarm_title),
-            description = stringResource(id = R.string.permission_intro_exact_alarm_description),
-            granted = state.exactAlarmGranted,
-            buttonLabel = stringResource(id = R.string.permission_intro_open_settings),
-            onClick = onRequestExactAlarm
+    val cards = buildList {
+        add(
+            PermissionCardData(
+                title = stringResource(id = R.string.permission_intro_overlay_title),
+                description = stringResource(id = R.string.permission_intro_overlay_description),
+                granted = state.overlayGranted,
+                buttonLabel = stringResource(id = R.string.permission_intro_open_settings),
+                onClick = onRequestOverlay
+            )
         )
-    )
+        add(
+            PermissionCardData(
+                title = stringResource(id = R.string.permission_intro_usage_title),
+                description = stringResource(id = R.string.permission_intro_usage_description),
+                granted = state.usageStatsGranted,
+                buttonLabel = stringResource(id = R.string.permission_intro_open_settings),
+                onClick = onRequestUsageStats
+            )
+        )
+        add(
+            PermissionCardData(
+                title = stringResource(id = R.string.permission_intro_exact_alarm_title),
+                description = stringResource(id = R.string.permission_intro_exact_alarm_description),
+                granted = state.exactAlarmGranted,
+                buttonLabel = stringResource(id = R.string.permission_intro_open_settings),
+                onClick = onRequestExactAlarm
+            )
+        )
+        if (showNotificationPermission) {
+            add(
+                PermissionCardData(
+                    title = stringResource(id = R.string.permission_intro_notification_title),
+                    description = stringResource(id = R.string.permission_intro_notification_description),
+                    granted = state.notificationGranted,
+                    buttonLabel = if (notificationNeedsSettings) {
+                        stringResource(id = R.string.permission_intro_open_settings)
+                    } else {
+                        stringResource(id = R.string.permission_intro_notification_button)
+                    },
+                    onClick = onRequestNotification
+                )
+            )
+        }
+    }
 
     LazyColumn(
         modifier = modifier.fillMaxWidth(),
@@ -371,11 +481,18 @@ private fun launchExactAlarmSettings(context: Context) {
 private fun PermissionIntroPreviewGranted() {
     UltraFocusTheme {
         PermissionIntroContent(
-            state = LockPermissionState(overlayGranted = true, usageStatsGranted = true, exactAlarmGranted = true),
+            state = LockPermissionState(
+                overlayGranted = true,
+                usageStatsGranted = true,
+                exactAlarmGranted = true,
+                notificationGranted = true
+            ),
+            notificationNeedsSettings = false,
             onReload = {},
             onRequestOverlay = {},
             onRequestUsageStats = {},
-            onRequestExactAlarm = {}
+            onRequestExactAlarm = {},
+            onRequestNotification = {}
         )
     }
 }
@@ -385,11 +502,18 @@ private fun PermissionIntroPreviewGranted() {
 private fun PermissionIntroPreviewMissing() {
     UltraFocusTheme {
         PermissionIntroContent(
-            state = LockPermissionState(overlayGranted = false, usageStatsGranted = false, exactAlarmGranted = false),
+            state = LockPermissionState(
+                overlayGranted = false,
+                usageStatsGranted = false,
+                exactAlarmGranted = false,
+                notificationGranted = false
+            ),
+            notificationNeedsSettings = false,
             onReload = {},
             onRequestOverlay = {},
             onRequestUsageStats = {},
-            onRequestExactAlarm = {}
+            onRequestExactAlarm = {},
+            onRequestNotification = {}
         )
     }
 }

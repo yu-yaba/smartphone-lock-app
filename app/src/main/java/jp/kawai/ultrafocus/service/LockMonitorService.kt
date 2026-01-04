@@ -19,6 +19,8 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import jp.kawai.ultrafocus.R
 import jp.kawai.ultrafocus.data.repository.LockRepository
+import jp.kawai.ultrafocus.data.repository.SettingsPackages
+import jp.kawai.ultrafocus.emergency.EmergencyUnlockState
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -60,6 +62,7 @@ class LockMonitorService : Service() {
     private var forcedRedirectJob: Job? = null
     private val overlayThrottler = PackageEventThrottler(BLACKLIST_OVERLAY_DEBOUNCE_MILLIS)
     private val lockUiRedirectThrottler = PackageEventThrottler(LOCK_UI_REDIRECT_DEBOUNCE_MILLIS)
+    private val emergencyRedirectThrottler = PackageEventThrottler(EMERGENCY_REDIRECT_DEBOUNCE_MILLIS)
 
     override fun onCreate() {
         super.onCreate()
@@ -118,6 +121,21 @@ class LockMonitorService : Service() {
             if (!isLocked) return@start
             val normalized = packageName.trim()
             if (normalized.isEmpty()) return@start
+            if (EmergencyUnlockState.isActive()) {
+                if (normalized != this.packageName) {
+                    serviceScope.launch {
+                        redirectToEmergencyUnlock(normalized, reason = "foreground_detected")
+                    }
+                }
+                return@start
+            }
+            if (!hasPostNotificationPermissionCompat() &&
+                PermissionRecoveryStore.isActive(this@LockMonitorService) &&
+                SettingsPackages.SETTINGS_ONLY.contains(normalized)
+            ) {
+                Log.d(TAG, "Skip redirect during permission recovery for package=$normalized")
+                return@start
+            }
             if (lockRepository.shouldForceLockUi(normalized)) {
                 val reason = resolveReasonLabel(normalized)
                 serviceScope.launch { handleForcedRedirect(normalized, reason) }
@@ -172,6 +190,10 @@ class LockMonitorService : Service() {
     }
 
     private suspend fun handleForcedRedirect(packageName: String, reason: String) {
+        if (EmergencyUnlockState.isActive()) {
+            redirectToEmergencyUnlock(packageName, reason = "forced_redirect")
+            return
+        }
         startForcedRedirectBurst(packageName, reason)
     }
 
@@ -182,6 +204,10 @@ class LockMonitorService : Service() {
             var iteration = 0
             while (isActive && isLocked && SystemClock.elapsedRealtime() - start <= FORCED_REDIRECT_BURST_MILLIS) {
                 iteration++
+                if (EmergencyUnlockState.isActive()) {
+                    redirectToEmergencyUnlock(packageName, reason = "redirect_burst")
+                    break
+                }
                 // Overlay 再掲出（デバウンス無効化）
                 runCatching { overlayManager.show(bypassDebounce = true) }
                     .onFailure { Log.w(TAG, "Failed to force overlay (iteration=$iteration)", it) }
@@ -190,6 +216,15 @@ class LockMonitorService : Service() {
                     .onFailure { Log.w(TAG, "Failed to bring lock UI (iteration=$iteration)", it) }
                 delay(FORCED_REDIRECT_INTERVAL_MILLIS)
             }
+        }
+    }
+
+    private suspend fun redirectToEmergencyUnlock(packageName: String, reason: String) {
+        if (emergencyRedirectThrottler.shouldTrigger(packageName)) {
+            Log.d(TAG, "Emergency unlock active; redirect reason=$reason package=$packageName")
+            lockUiLauncher.bringEmergencyUnlockToFront()
+        } else {
+            Log.v(TAG, "Skip emergency redirect (debounced) reason=$reason package=$packageName")
         }
     }
 
@@ -300,6 +335,7 @@ class LockMonitorService : Service() {
         private const val RESTART_REQUEST_CODE = 9001
         private const val BLACKLIST_OVERLAY_DEBOUNCE_MILLIS = 1_000L
         private const val LOCK_UI_REDIRECT_DEBOUNCE_MILLIS = 1_500L
+        private const val EMERGENCY_REDIRECT_DEBOUNCE_MILLIS = 350L
         private const val FORCED_REDIRECT_BURST_MILLIS = 5_000L
         private const val FORCED_REDIRECT_INTERVAL_MILLIS = 400L
         private const val START_DEBOUNCE_MILLIS = 12_000L
