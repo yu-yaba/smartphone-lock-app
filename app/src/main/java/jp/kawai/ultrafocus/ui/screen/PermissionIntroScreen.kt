@@ -33,7 +33,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberSaveable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +57,9 @@ import jp.kawai.ultrafocus.data.repository.DefaultLockPermissionsRepository
 import jp.kawai.ultrafocus.model.LockPermissionState
 import jp.kawai.ultrafocus.ui.lock.LockScreenViewModel
 
+private const val PREFS_NOTIFICATION_REQUESTED = "prefs_notification_permission"
+private const val KEY_NOTIFICATION_REQUESTED = "notification_permission_requested"
+
 @Composable
 fun PermissionIntroScreen(
     lockViewModel: LockScreenViewModel,
@@ -63,9 +67,14 @@ fun PermissionIntroScreen(
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
+    val prefs = remember {
+        context.getSharedPreferences(PREFS_NOTIFICATION_REQUESTED, Context.MODE_PRIVATE)
+    }
     val permissionState by lockViewModel.permissionState.collectAsStateWithLifecycle()
     val activity = context as? Activity
-    var notificationRequestAttempted by rememberSaveable { mutableStateOf(false) }
+    var notificationRequestAttempted by rememberSaveable {
+        mutableStateOf(prefs.getBoolean(KEY_NOTIFICATION_REQUESTED, false))
+    }
     val showNotificationPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
     val shouldShowNotificationRationale = if (
         showNotificationPermission &&
@@ -87,6 +96,7 @@ fun PermissionIntroScreen(
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) {
+        prefs.edit().putBoolean(KEY_NOTIFICATION_REQUESTED, true).apply()
         notificationRequestAttempted = true
         lockViewModel.refreshPermissions()
     }
@@ -128,6 +138,7 @@ fun PermissionIntroScreen(
             if (notificationNeedsSettings) {
                 launchSafe(context, DefaultLockPermissionsRepository.appDetailsSettingsIntent(context))
             } else {
+                prefs.edit().putBoolean(KEY_NOTIFICATION_REQUESTED, true).apply()
                 notificationRequestAttempted = true
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
