@@ -44,7 +44,12 @@ class BootFastStartupReceiver : BroadcastReceiver() {
                 if (isLocked && (lockEnd == null || lockEnd > now)) {
                     Log.i(TAG, "Fast boot start: locked state detected in DP store (retry=$retrying)")
                     LockMonitorService.start(appContext, reason = "boot_fast_receiver", bypassDebounce = true)
-                    OverlayLockService.start(appContext, reason = "boot_fast_receiver", bypassDebounce = true)
+                    OverlayLockService.start(
+                        appContext,
+                        reason = "boot_fast_receiver",
+                        bypassDebounce = true,
+                        forceShow = true
+                    )
                     // ウォッチドッグも即時復元（WorkManager は解錠後のみ）
                     WatchdogScheduler.scheduleHeartbeat(appContext, immediate = true)
                     WatchdogScheduler.scheduleLockExpiry(appContext, lockEnd)

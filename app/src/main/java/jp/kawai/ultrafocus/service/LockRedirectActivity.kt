@@ -46,7 +46,7 @@ class LockRedirectActivity : ComponentActivity() {
         onBackPressedDispatcher.addCallback(this) { /* no-op while locked */ }
 
         // 可能な限り早くフォアグラウンドを奪取し、オーバーレイ/監視を再開する
-        OverlayLockService.start(this, reason = "redirect_activity", bypassDebounce = true)
+        OverlayLockService.start(this, reason = "redirect_activity", bypassDebounce = true, forceShow = true)
         LockMonitorService.start(this, reason = "redirect_activity", bypassDebounce = true)
 
         // ロック解除されたら自動で閉じる
