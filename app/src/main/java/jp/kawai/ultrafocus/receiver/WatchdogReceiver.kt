@@ -63,6 +63,8 @@ class WatchdogReceiver : BroadcastReceiver() {
         if (!context.hasPostNotificationPermissionCompat()) {
             Log.w(TAG, "Notification permission missing during lock; refreshing permission state")
             lockPermissionsRepository.refreshPermissionState()
+            forceStopLockForPermission(context)
+            return
         }
         LockMonitorService.start(context)
         OverlayLockService.start(context)
@@ -74,6 +76,30 @@ class WatchdogReceiver : BroadcastReceiver() {
         }
         if (snapshot.lockEndTimestamp != null) {
             WatchdogScheduler.scheduleLockExpiry(context, snapshot.lockEndTimestamp)
+        }
+    }
+
+    private suspend fun forceStopLockForPermission(context: Context) {
+        withContext(Dispatchers.Default) {
+            dataStoreManager.updateLockState(false, null, null)
+        }
+        WatchdogScheduler.cancelHeartbeat(context)
+        WatchdogScheduler.cancelLockExpiry(context)
+        WatchdogWorkScheduler.cancel(context)
+        LockMonitorService.stop(context)
+        OverlayLockService.stop(context)
+        runCatching {
+            context.startActivity(
+                Intent(context, jp.kawai.ultrafocus.MainActivity::class.java).apply {
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    )
+                }
+            )
+        }.onFailure { throwable ->
+            Log.w(TAG, "Failed to launch permission recovery screen", throwable)
         }
     }
 

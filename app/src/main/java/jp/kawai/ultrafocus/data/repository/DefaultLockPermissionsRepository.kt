@@ -105,6 +105,7 @@ class DefaultLockPermissionsRepository @Inject constructor(
 
     companion object {
         private const val TAG = "LockPermissionsRepository"
+        private const val OPSTR_POST_NOTIFICATION = "android:post_notification"
 
         fun overlaySettingsIntent(context: Context): Intent {
             return Intent(
@@ -141,7 +142,7 @@ class DefaultLockPermissionsRepository @Inject constructor(
             AppOpsManager.OPSTR_GET_USAGE_STATS
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            watchedOps.add(AppOpsManager.OPSTR_POST_NOTIFICATION)
+            watchedOps.add(OPSTR_POST_NOTIFICATION)
         }
         val listener = AppOpsManager.OnOpChangedListener { op, pkg ->
             if (pkg != context.packageName) return@OnOpChangedListener
@@ -154,7 +155,8 @@ class DefaultLockPermissionsRepository @Inject constructor(
         appOps.startWatchingMode(AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW, context.packageName, listener)
         appOps.startWatchingMode(AppOpsManager.OPSTR_GET_USAGE_STATS, context.packageName, listener)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            appOps.startWatchingMode(AppOpsManager.OPSTR_POST_NOTIFICATION, context.packageName, listener)
+            appOps.startWatchingMode(OPSTR_POST_NOTIFICATION, context.packageName, listener)
         }
     }
+
 }
