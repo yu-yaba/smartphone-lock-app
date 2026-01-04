@@ -66,6 +66,24 @@ fun PermissionIntroScreen(
     val permissionState by lockViewModel.permissionState.collectAsStateWithLifecycle()
     val activity = context as? Activity
     var notificationRequestAttempted by rememberSaveable { mutableStateOf(false) }
+    val showNotificationPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+    val shouldShowNotificationRationale = if (
+        showNotificationPermission &&
+        !permissionState.notificationGranted &&
+        activity != null
+    ) {
+        androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(
+            activity,
+            Manifest.permission.POST_NOTIFICATIONS
+        )
+    } else {
+        false
+    }
+    val notificationNeedsSettings =
+        showNotificationPermission &&
+            !permissionState.notificationGranted &&
+            notificationRequestAttempted &&
+            !shouldShowNotificationRationale
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) {
@@ -87,6 +105,7 @@ fun PermissionIntroScreen(
 
     PermissionIntroContent(
         state = permissionState,
+        notificationNeedsSettings = notificationNeedsSettings,
         onReload = lockViewModel::refreshPermissions,
         onRequestOverlay = {
             launchSafe(context, DefaultLockPermissionsRepository.overlaySettingsIntent(context))
@@ -106,13 +125,7 @@ fun PermissionIntroScreen(
                 lockViewModel.refreshPermissions()
                 return@PermissionIntroContent
             }
-            val shouldShowRationale = activity?.let {
-                androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(
-                    it,
-                    Manifest.permission.POST_NOTIFICATIONS
-                )
-            } ?: false
-            if (notificationRequestAttempted && !shouldShowRationale) {
+            if (notificationNeedsSettings) {
                 launchSafe(context, DefaultLockPermissionsRepository.appDetailsSettingsIntent(context))
             } else {
                 notificationRequestAttempted = true
@@ -126,6 +139,7 @@ fun PermissionIntroScreen(
 @Composable
 fun PermissionIntroContent(
     state: LockPermissionState,
+    notificationNeedsSettings: Boolean,
     onReload: () -> Unit,
     onRequestOverlay: () -> Unit,
     onRequestUsageStats: () -> Unit,
@@ -245,6 +259,7 @@ fun PermissionIntroContent(
             PermissionList(
                 state = state,
                 showNotificationPermission = showNotificationPermission,
+                notificationNeedsSettings = notificationNeedsSettings,
                 onRequestOverlay = onRequestOverlay,
                 onRequestUsageStats = onRequestUsageStats,
                 onRequestExactAlarm = onRequestExactAlarm,
@@ -274,6 +289,7 @@ fun PermissionIntroContent(
 private fun PermissionList(
     state: LockPermissionState,
     showNotificationPermission: Boolean,
+    notificationNeedsSettings: Boolean,
     onRequestOverlay: () -> Unit,
     onRequestUsageStats: () -> Unit,
     onRequestExactAlarm: () -> Unit,
@@ -315,7 +331,11 @@ private fun PermissionList(
                     title = stringResource(id = R.string.permission_intro_notification_title),
                     description = stringResource(id = R.string.permission_intro_notification_description),
                     granted = state.notificationGranted,
-                    buttonLabel = stringResource(id = R.string.permission_intro_notification_button),
+                    buttonLabel = if (notificationNeedsSettings) {
+                        stringResource(id = R.string.permission_intro_open_settings)
+                    } else {
+                        stringResource(id = R.string.permission_intro_notification_button)
+                    },
                     onClick = onRequestNotification
                 )
             )
@@ -456,6 +476,7 @@ private fun PermissionIntroPreviewGranted() {
                 exactAlarmGranted = true,
                 notificationGranted = true
             ),
+            notificationNeedsSettings = false,
             onReload = {},
             onRequestOverlay = {},
             onRequestUsageStats = {},
@@ -476,6 +497,7 @@ private fun PermissionIntroPreviewMissing() {
                 exactAlarmGranted = false,
                 notificationGranted = false
             ),
+            notificationNeedsSettings = false,
             onReload = {},
             onRequestOverlay = {},
             onRequestUsageStats = {},
