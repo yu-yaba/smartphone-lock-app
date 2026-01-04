@@ -1,8 +1,8 @@
 <resources>
     <string name="app_name">Ultra Focus</string>
     <string name="permission_intro_title">ロックを有効にする準備</string>
-    <string name="permission_intro_description">ロックを開始する前に、必須の4つの権限を許可してください。設定アプリから戻ると自動的に状態を更新します。</string>
-    <string name="permission_intro_progress">必須 %1$d / 4 完了</string>
+    <string name="permission_intro_description">ロックを開始する前に、必須の権限を許可してください。設定アプリから戻ると自動的に状態を更新します。</string>
+    <string name="permission_intro_progress">必須 %1$d / %2$d 完了</string>
     <string name="permission_intro_progress_hint">設定アプリから戻ると自動で状態を更新します</string>
     <string name="permission_intro_reload">権限状態を再読み込み</string>
     <string name="permission_intro_overlay_title">画面の上に表示 (Overlay)</string>
