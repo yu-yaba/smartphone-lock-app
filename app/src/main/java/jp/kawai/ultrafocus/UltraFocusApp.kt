@@ -14,8 +14,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import jp.kawai.ultrafocus.emergency.EmergencyUnlockState
 import jp.kawai.ultrafocus.navigation.AppDestination
 import jp.kawai.ultrafocus.ui.lock.LockScreenViewModel
+import jp.kawai.ultrafocus.ui.screen.EmergencyUnlockScreen
 import jp.kawai.ultrafocus.ui.screen.LockScreen
 import jp.kawai.ultrafocus.ui.screen.PermissionIntroScreen
 import jp.kawai.ultrafocus.ui.theme.GradientSkyEnd
@@ -24,11 +26,14 @@ import jp.kawai.ultrafocus.ui.theme.GradientSkyStart
 @Composable
 fun UltraFocusApp(
     modifier: Modifier = Modifier,
-    lockViewModel: LockScreenViewModel = hiltViewModel()
+    lockViewModel: LockScreenViewModel = hiltViewModel(),
+    requestedNavRoute: String? = null,
+    onRequestedNavRouteConsumed: () -> Unit = {}
 ) {
     val navController = rememberNavController()
     val permissionState = lockViewModel.permissionState.collectAsStateWithLifecycle()
     val currentBackStackEntry = navController.currentBackStackEntryAsState().value
+    val currentRoute = currentBackStackEntry?.destination?.route
     val startDestination = if (permissionState.value.allGranted) {
         AppDestination.Lock.route
     } else {
@@ -39,11 +44,33 @@ fun UltraFocusApp(
         lockViewModel.refreshPermissions()
     }
 
-    LaunchedEffect(permissionState.value.allGranted, currentBackStackEntry?.destination?.route) {
-        val currentRoute = currentBackStackEntry?.destination?.route
+    LaunchedEffect(permissionState.value.allGranted, currentRoute) {
         val target = determinePermissionDestination(currentRoute, permissionState.value.allGranted)
         if (target != null) {
             navController.navigateAndSetAsRoot(target)
+        }
+    }
+
+    LaunchedEffect(currentRoute, requestedNavRoute, permissionState.value.allGranted) {
+        if (!permissionState.value.allGranted) {
+            if (requestedNavRoute != null) {
+                onRequestedNavRouteConsumed()
+            }
+            EmergencyUnlockState.setActive(false)
+            return@LaunchedEffect
+        }
+        val emergencyRequested = requestedNavRoute == AppDestination.EmergencyUnlock.route
+        val emergencyVisible = currentRoute == AppDestination.EmergencyUnlock.route
+        EmergencyUnlockState.setActive(emergencyVisible || emergencyRequested)
+    }
+
+    LaunchedEffect(requestedNavRoute, permissionState.value.allGranted) {
+        val targetRoute = requestedNavRoute
+        if (targetRoute != null && permissionState.value.allGranted) {
+            navController.navigate(targetRoute) {
+                launchSingleTop = true
+            }
+            onRequestedNavRouteConsumed()
         }
     }
 
@@ -71,6 +98,13 @@ fun UltraFocusApp(
             composable(AppDestination.Lock.route) {
                 LockScreen(lockViewModel = lockViewModel)
             }
+
+            composable(AppDestination.EmergencyUnlock.route) {
+                EmergencyUnlockScreen(
+                    onBackToLock = { navController.navigateAndSetAsRoot(AppDestination.Lock.route) },
+                    onUnlocked = { navController.navigateAndSetAsRoot(AppDestination.Lock.route) }
+                )
+            }
         }
     }
 }
@@ -79,16 +113,13 @@ internal fun determinePermissionDestination(
     currentRoute: String?,
     allGranted: Boolean
 ): String? {
-    val target = if (allGranted) {
-        AppDestination.Lock.route
-    } else {
-        AppDestination.Permission.route
+    if (!allGranted) {
+        return if (currentRoute == AppDestination.Permission.route) null else AppDestination.Permission.route
     }
-    return if (currentRoute == null || currentRoute != target) {
-        target
-    } else {
-        null
+    if (currentRoute == null || currentRoute == AppDestination.Permission.route) {
+        return AppDestination.Lock.route
     }
+    return null
 }
 
 private fun androidx.navigation.NavController.navigateAndSetAsRoot(route: String) {

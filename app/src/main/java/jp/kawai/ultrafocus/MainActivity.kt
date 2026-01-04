@@ -5,7 +5,10 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import jp.kawai.ultrafocus.config.SupabaseConfigRepository
 import jp.kawai.ultrafocus.ui.theme.UltraFocusTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -22,8 +25,11 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var supabaseConfigRepository: SupabaseConfigRepository
 
+    private var pendingNavRoute by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pendingNavRoute = intent?.getStringExtra(EXTRA_NAV_ROUTE)
         setContent {
             UltraFocusTheme {
                 val supabaseConfig = remember { supabaseConfigRepository.fetch() }
@@ -41,12 +47,23 @@ class MainActivity : ComponentActivity() {
                         } ?: Log.i(TAG, "Supabase client not initialized (disabled)")
                     }
                 }
-                UltraFocusApp()
+                UltraFocusApp(
+                    requestedNavRoute = pendingNavRoute,
+                    onRequestedNavRouteConsumed = { pendingNavRoute = null }
+                )
             }
         }
     }
 
-    private companion object {
-        const val TAG = "MainActivity"
+    override fun onNewIntent(intent: android.content.Intent?) {
+        super.onNewIntent(intent)
+        if (intent == null) return
+        setIntent(intent)
+        pendingNavRoute = intent.getStringExtra(EXTRA_NAV_ROUTE)
+    }
+
+    companion object {
+        const val EXTRA_NAV_ROUTE = "extra_nav_route"
+        private const val TAG = "MainActivity"
     }
 }
