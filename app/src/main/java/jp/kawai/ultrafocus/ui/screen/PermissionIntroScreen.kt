@@ -1,9 +1,13 @@
 package jp.kawai.ultrafocus.ui.screen
 
+import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -56,6 +60,11 @@ fun PermissionIntroScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val permissionState by lockViewModel.permissionState.collectAsStateWithLifecycle()
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) {
+        lockViewModel.refreshPermissions()
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -81,6 +90,13 @@ fun PermissionIntroScreen(
         onRequestExactAlarm = {
             launchExactAlarmSettings(context)
         },
+        onRequestNotification = {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                lockViewModel.refreshPermissions()
+            } else {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        },
         modifier = modifier
     )
 }
@@ -92,10 +108,16 @@ fun PermissionIntroContent(
     onRequestOverlay: () -> Unit,
     onRequestUsageStats: () -> Unit,
     onRequestExactAlarm: () -> Unit,
+    onRequestNotification: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val spacing = MaterialTheme.spacing
-    val requiredPermissions = listOf(state.overlayGranted, state.usageStatsGranted, state.exactAlarmGranted)
+    val requiredPermissions = listOf(
+        state.overlayGranted,
+        state.usageStatsGranted,
+        state.exactAlarmGranted,
+        state.notificationGranted
+    )
     val grantedCount = requiredPermissions.count { it }
     val progress = grantedCount / requiredPermissions.size.toFloat()
 
@@ -189,6 +211,7 @@ fun PermissionIntroContent(
                 onRequestOverlay = onRequestOverlay,
                 onRequestUsageStats = onRequestUsageStats,
                 onRequestExactAlarm = onRequestExactAlarm,
+                onRequestNotification = onRequestNotification,
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -216,6 +239,7 @@ private fun PermissionList(
     onRequestOverlay: () -> Unit,
     onRequestUsageStats: () -> Unit,
     onRequestExactAlarm: () -> Unit,
+    onRequestNotification: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val spacing = MaterialTheme.spacing
@@ -240,6 +264,13 @@ private fun PermissionList(
             granted = state.exactAlarmGranted,
             buttonLabel = stringResource(id = R.string.permission_intro_open_settings),
             onClick = onRequestExactAlarm
+        ),
+        PermissionCardData(
+            title = stringResource(id = R.string.permission_intro_notification_title),
+            description = stringResource(id = R.string.permission_intro_notification_description),
+            granted = state.notificationGranted,
+            buttonLabel = stringResource(id = R.string.permission_intro_notification_button),
+            onClick = onRequestNotification
         )
     )
 
@@ -371,11 +402,17 @@ private fun launchExactAlarmSettings(context: Context) {
 private fun PermissionIntroPreviewGranted() {
     UltraFocusTheme {
         PermissionIntroContent(
-            state = LockPermissionState(overlayGranted = true, usageStatsGranted = true, exactAlarmGranted = true),
+            state = LockPermissionState(
+                overlayGranted = true,
+                usageStatsGranted = true,
+                exactAlarmGranted = true,
+                notificationGranted = true
+            ),
             onReload = {},
             onRequestOverlay = {},
             onRequestUsageStats = {},
-            onRequestExactAlarm = {}
+            onRequestExactAlarm = {},
+            onRequestNotification = {}
         )
     }
 }
@@ -385,11 +422,17 @@ private fun PermissionIntroPreviewGranted() {
 private fun PermissionIntroPreviewMissing() {
     UltraFocusTheme {
         PermissionIntroContent(
-            state = LockPermissionState(overlayGranted = false, usageStatsGranted = false, exactAlarmGranted = false),
+            state = LockPermissionState(
+                overlayGranted = false,
+                usageStatsGranted = false,
+                exactAlarmGranted = false,
+                notificationGranted = false
+            ),
             onReload = {},
             onRequestOverlay = {},
             onRequestUsageStats = {},
-            onRequestExactAlarm = {}
+            onRequestExactAlarm = {},
+            onRequestNotification = {}
         )
     }
 }

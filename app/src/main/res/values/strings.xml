@@ -1,8 +1,8 @@
 <resources>
     <string name="app_name">Ultra Focus</string>
     <string name="permission_intro_title">ロックを有効にする準備</string>
-    <string name="permission_intro_description">ロックを開始する前に、必須の3つの権限を許可してください。設定アプリから戻ると自動的に状態を更新します。</string>
-    <string name="permission_intro_progress">必須 %1$d / 3 完了</string>
+    <string name="permission_intro_description">ロックを開始する前に、必須の4つの権限を許可してください。設定アプリから戻ると自動的に状態を更新します。</string>
+    <string name="permission_intro_progress">必須 %1$d / 4 完了</string>
     <string name="permission_intro_progress_hint">設定アプリから戻ると自動で状態を更新します</string>
     <string name="permission_intro_reload">権限状態を再読み込み</string>
     <string name="permission_intro_overlay_title">画面の上に表示 (Overlay)</string>
@@ -14,6 +14,9 @@
     <string name="permission_intro_status_denied">未許可</string>
     <string name="permission_intro_exact_alarm_title">正確なアラーム</string>
     <string name="permission_intro_exact_alarm_description">ロック終了時刻やウォッチドッグを誤差なく実行するために必須です。許可しないとロックを開始できません。</string>
+    <string name="permission_intro_notification_title">通知の許可</string>
+    <string name="permission_intro_notification_description">監視サービスを安定して動かすために必須です。許可しないとロックを開始できません。（Android 13 以降）</string>
+    <string name="permission_intro_notification_button">許可する</string>
     <string name="lock_screen_title"></string>
     <string name="lock_screen_subtitle"></string>
     <string name="lock_screen_duration_label">ロックする時間を選択</string>
@@ -45,7 +48,18 @@
     <string name="overlay_service_notification_content">ロックを実行中です</string>
     <string name="overlay_lock_panel_title"></string>
     <string name="overlay_lock_panel_hint">解除するにはアプリに戻ってください</string>
+    <string name="overlay_lock_emergency_unlock">緊急解除へ</string>
     <string name="lock_monitor_notification_channel">ロック監視</string>
     <string name="lock_monitor_notification_title">使用状況を監視中</string>
     <string name="lock_monitor_notification_content">ロックを維持するために監視しています</string>
+    <string name="emergency_unlock_title">緊急解除の宣言文</string>
+    <string name="emergency_unlock_subtitle">全文一致でのみ解除できます</string>
+    <string name="emergency_unlock_input_label">入力欄</string>
+    <string name="emergency_unlock_input_placeholder">ここに宣言文を一字一句そのまま入力してください</string>
+    <string name="emergency_unlock_input_progress">入力: %1$d / %2$d 文字</string>
+    <string name="emergency_unlock_mismatch_index">不一致: %1$d文字目</string>
+    <string name="emergency_unlock_mismatch_hint">宣言文と完全に一致したときだけロックが解除されます</string>
+    <string name="emergency_unlock_button">ロック解除</string>
+    <string name="emergency_unlock_back_button">ロック画面に戻る</string>
+    <string name="emergency_unlock_success_toast">ロックを解除しました。スマホの使いすぎに注意しましょう。</string>
 </resources>

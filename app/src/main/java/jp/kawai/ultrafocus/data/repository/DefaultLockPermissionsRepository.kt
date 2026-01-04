@@ -3,11 +3,13 @@ package jp.kawai.ultrafocus.data.repository
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Process
 import android.provider.Settings
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -66,7 +68,8 @@ class DefaultLockPermissionsRepository @Inject constructor(
         return LockPermissionState(
             overlayGranted = Settings.canDrawOverlays(context),
             usageStatsGranted = isUsageStatsGranted(context),
-            exactAlarmGranted = context.canUseExactAlarms()
+            exactAlarmGranted = context.canUseExactAlarms(),
+            notificationGranted = isNotificationGranted(context)
         )
     }
 
@@ -88,6 +91,16 @@ class DefaultLockPermissionsRepository @Inject constructor(
             )
         }
         return mode == AppOpsManager.MODE_ALLOWED || mode == AppOpsManager.MODE_FOREGROUND
+    }
+
+    private fun isNotificationGranted(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return true
+        }
+        return ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     companion object {

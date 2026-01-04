@@ -12,6 +12,7 @@ import androidx.lifecycle.viewModelScope
 import jp.kawai.ultrafocus.data.datastore.DataStoreManager
 import jp.kawai.ultrafocus.data.repository.LockPermissionsRepository
 import jp.kawai.ultrafocus.data.repository.LockRepository
+import jp.kawai.ultrafocus.emergency.EmergencyUnlockState
 import jp.kawai.ultrafocus.model.LockPermissionState
 import jp.kawai.ultrafocus.service.LockMonitorService
 import jp.kawai.ultrafocus.service.OverlayLockService
@@ -53,6 +54,7 @@ class LockScreenViewModel @Inject constructor(
     private var countdownJob: Job? = null
     private var pendingLockActivationUntil: Long? = null
     private var overlayRunning: Boolean = false
+    private var monitorRunning: Boolean = false
 
     init {
         refreshPermissions()
@@ -61,7 +63,7 @@ class LockScreenViewModel @Inject constructor(
 
     private fun observeLockState() {
         viewModelScope.launch {
-            combine(
+            val baseStateFlow = combine(
                 dataStoreManager.isLocked,
                 dataStoreManager.lockStartTimestamp,
                 dataStoreManager.lockEndTimestamp,
@@ -73,8 +75,13 @@ class LockScreenViewModel @Inject constructor(
                     lockStartTimestamp,
                     lockEndTimestamp,
                     selectedHours,
-                    selectedMinutes
+                    selectedMinutes,
+                    emergencyUnlockActive = false
                 )
+            }
+
+            combine(baseStateFlow, EmergencyUnlockState.active) { base, emergencyActive ->
+                base.copy(emergencyUnlockActive = emergencyActive)
             }.collect { state ->
                 val (normalizedHours, normalizedMinutes) = normalizeDuration(
                     state.selectedHours,
@@ -124,7 +131,8 @@ class LockScreenViewModel @Inject constructor(
                     )
                 }
 
-                val shouldRunOverlay = effectiveIsLocked && countdownTarget != null
+                val shouldRunMonitor = effectiveIsLocked && countdownTarget != null
+                val shouldRunOverlay = shouldRunMonitor && !state.emergencyUnlockActive
 
                 if (!effectiveIsLocked) {
                     countdownJob?.cancel()
@@ -133,14 +141,21 @@ class LockScreenViewModel @Inject constructor(
                     startCountdown(countdownTarget)
                 }
 
+                if (monitorRunning != shouldRunMonitor) {
+                    monitorRunning = shouldRunMonitor
+                    if (shouldRunMonitor) {
+                        LockMonitorService.start(appContext, bypassDebounce = true)
+                    } else {
+                        LockMonitorService.stop(appContext)
+                    }
+                }
+
                 if (overlayRunning != shouldRunOverlay) {
                     overlayRunning = shouldRunOverlay
                     if (shouldRunOverlay) {
-                        LockMonitorService.start(appContext, bypassDebounce = true)
                         OverlayLockService.start(appContext, bypassDebounce = true)
                     } else {
                         OverlayLockService.stop(appContext)
-                        LockMonitorService.stop(appContext)
                     }
                 }
             }
@@ -174,7 +189,8 @@ class LockScreenViewModel @Inject constructor(
             return
         }
         if (!ensureNotificationPermission(activity)) {
-            Log.w(TAG, "Notification permission missing; continue without notification")
+            Log.w(TAG, "Notification permission missing; blocking lock start")
+            return
         }
         lockRepository.refreshDynamicLists()
         val selectedState = uiState.value
@@ -201,6 +217,7 @@ class LockScreenViewModel @Inject constructor(
             WatchdogScheduler.scheduleLockExpiry(appContext, lockEndTimestamp)
             WatchdogWorkScheduler.schedule(appContext, delayMillis = 0L)
             overlayRunning = true
+            monitorRunning = true
         }
     }
 
@@ -218,6 +235,7 @@ class LockScreenViewModel @Inject constructor(
             WatchdogScheduler.cancelLockExpiry(appContext)
             WatchdogWorkScheduler.cancel(appContext)
             overlayRunning = false
+            monitorRunning = false
         }
     }
 
@@ -308,5 +326,6 @@ private data class LockPreferencesState(
     val lockStartTimestamp: Long?,
     val lockEndTimestamp: Long?,
     val selectedHours: Int,
-    val selectedMinutes: Int
+    val selectedMinutes: Int,
+    val emergencyUnlockActive: Boolean
 )

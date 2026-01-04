@@ -749,7 +749,12 @@ private fun LockScreenPreview() {
                 isLocked = false,
                 remainingMillis = 90 * 60 * 1000L
             ),
-            permissionState = LockPermissionState(overlayGranted = true, usageStatsGranted = true),
+            permissionState = LockPermissionState(
+                overlayGranted = true,
+                usageStatsGranted = true,
+                exactAlarmGranted = true,
+                notificationGranted = true
+            ),
             onStartLock = {},
             onDurationChange = { _, _ -> }
         )
@@ -767,7 +772,12 @@ private fun LockScreenMissingPermissionPreview() {
                 isLocked = false,
                 remainingMillis = 0
             ),
-            permissionState = LockPermissionState(overlayGranted = false, usageStatsGranted = true),
+            permissionState = LockPermissionState(
+                overlayGranted = false,
+                usageStatsGranted = true,
+                exactAlarmGranted = true,
+                notificationGranted = true
+            ),
             onStartLock = {},
             onDurationChange = { _, _ -> }
         )
