@@ -85,7 +85,7 @@ fun LockScreen(
     LockScreenContent(
         uiState = uiState,
         permissionState = permissionState,
-        onStartLock = { activity?.let { lockViewModel.startLock(it) } },
+        onStartLock = { lockViewModel.startLock() },
         onDurationChange = lockViewModel::updateSelectedDuration,
         modifier = modifier
     )
