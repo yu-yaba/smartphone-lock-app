@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
 import android.os.UserManager
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -63,8 +64,7 @@ class WatchdogReceiver : BroadcastReceiver() {
         if (!context.hasPostNotificationPermissionCompat()) {
             Log.w(TAG, "Notification permission missing during lock; refreshing permission state")
             lockPermissionsRepository.refreshPermissionState()
-            forceStopLockForPermission(context)
-            return
+            requestPermissionRecovery(context)
         }
         LockMonitorService.start(context)
         OverlayLockService.start(context)
@@ -79,15 +79,10 @@ class WatchdogReceiver : BroadcastReceiver() {
         }
     }
 
-    private suspend fun forceStopLockForPermission(context: Context) {
-        withContext(Dispatchers.Default) {
-            dataStoreManager.updateLockState(false, null, null)
+    private fun requestPermissionRecovery(context: Context) {
+        if (!shouldTriggerPermissionRecovery()) {
+            return
         }
-        WatchdogScheduler.cancelHeartbeat(context)
-        WatchdogScheduler.cancelLockExpiry(context)
-        WatchdogWorkScheduler.cancel(context)
-        LockMonitorService.stop(context)
-        OverlayLockService.stop(context)
         runCatching {
             context.startActivity(
                 Intent(context, jp.kawai.ultrafocus.MainActivity::class.java).apply {
@@ -101,6 +96,16 @@ class WatchdogReceiver : BroadcastReceiver() {
         }.onFailure { throwable ->
             Log.w(TAG, "Failed to launch permission recovery screen", throwable)
         }
+    }
+
+    private fun shouldTriggerPermissionRecovery(): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        val sinceLast = now - lastPermissionRecoveryElapsed
+        if (lastPermissionRecoveryElapsed != 0L && sinceLast < PERMISSION_RECOVERY_DEBOUNCE_MILLIS) {
+            return false
+        }
+        lastPermissionRecoveryElapsed = now
+        return true
     }
 
     private suspend fun handleLockExpiry(context: Context) {
@@ -126,6 +131,8 @@ class WatchdogReceiver : BroadcastReceiver() {
         const val ACTION_HEARTBEAT = "jp.kawai.ultrafocus.action.HEARTBEAT"
         const val ACTION_LOCK_EXPIRY = "jp.kawai.ultrafocus.action.LOCK_EXPIRY"
         private const val TAG = "WatchdogReceiver"
+        private const val PERMISSION_RECOVERY_DEBOUNCE_MILLIS = 30_000L
+        private var lastPermissionRecoveryElapsed: Long = 0L
     }
 }
 
