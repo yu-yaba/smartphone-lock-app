@@ -148,7 +148,7 @@ class LockScreenViewModel @Inject constructor(
                 if (overlayRunning != shouldRunOverlay) {
                     overlayRunning = shouldRunOverlay
                     if (shouldRunOverlay) {
-                        OverlayLockService.start(appContext, bypassDebounce = true)
+                        OverlayLockService.start(appContext, bypassDebounce = true, forceShow = true)
                     } else {
                         OverlayLockService.stop(appContext)
                     }
@@ -203,7 +203,7 @@ class LockScreenViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.updateLockState(true, lockStartTimestamp, lockEndTimestamp)
             LockMonitorService.start(appContext, bypassDebounce = true)
-            OverlayLockService.start(appContext, bypassDebounce = true)
+            OverlayLockService.start(appContext, bypassDebounce = true, forceShow = true)
             WatchdogScheduler.scheduleHeartbeat(appContext, immediate = true)
             WatchdogScheduler.scheduleLockExpiry(appContext, lockEndTimestamp)
             WatchdogWorkScheduler.schedule(appContext, delayMillis = 0L)

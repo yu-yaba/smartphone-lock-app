@@ -134,7 +134,7 @@ class BootCompletedReceiver : BroadcastReceiver() {
     private fun restartLockServices(context: Context, reason: String) {
         // ブート直後はデバウンス不要。確実に立ち上げる。
         LockMonitorService.start(context, reason = reason, bypassDebounce = true)
-        OverlayLockService.start(context, reason = reason, bypassDebounce = true)
+        OverlayLockService.start(context, reason = reason, bypassDebounce = true, forceShow = true)
     }
 
     private fun resolveStorageTier(context: Context, action: String): StorageTier {
