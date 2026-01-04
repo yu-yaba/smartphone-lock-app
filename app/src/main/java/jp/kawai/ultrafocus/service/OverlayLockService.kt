@@ -16,23 +16,31 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.os.SystemClock
 import android.os.UserManager
+import android.net.Uri
 import android.provider.Settings
 import android.util.DisplayMetrics
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.app.AppOpsManager
+import android.os.Process
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import jp.kawai.ultrafocus.BuildConfig
+import jp.kawai.ultrafocus.MainActivity
 import jp.kawai.ultrafocus.R
+import jp.kawai.ultrafocus.data.repository.SettingsPackages
+import jp.kawai.ultrafocus.emergency.EmergencyUnlockState
+import jp.kawai.ultrafocus.navigation.AppDestination
 import jp.kawai.ultrafocus.data.datastore.DataStoreManager
 import jp.kawai.ultrafocus.data.datastore.LockStatePreferences
 import jp.kawai.ultrafocus.util.formatLockRemainingTime
@@ -47,6 +55,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @AndroidEntryPoint
 class OverlayLockService : Service() {
@@ -54,10 +63,18 @@ class OverlayLockService : Service() {
     @Inject
     lateinit var dataStoreManager: DataStoreManager
 
+    @Inject
+    lateinit var foregroundEventSource: ForegroundAppEventSource
+
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var windowManager: WindowManager
     private var overlayContainer: FrameLayout? = null
+    private var contentContainer: LinearLayout? = null
     private var countdownTextView: TextView? = null
+    private var titleTextView: TextView? = null
+    private var messageTextView: TextView? = null
+    private var emergencyButton: Button? = null
+    private var permissionButton: Button? = null
     private var lockStateJob: Job? = null
     private var deviceProtectedLockStateJob: Job? = null
     private var countdownJob: Job? = null
@@ -66,6 +83,11 @@ class OverlayLockService : Service() {
     private var foregroundStarted = false
     private var latestLockState: LockStatePreferences? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var overlayMode: OverlayMode = OverlayMode.LOCK
+    private var permissionRecoveryMonitorJob: Job? = null
+    private var permissionRecoveryFallbackJob: Job? = null
+    private var permissionRecoveryInProgress: Boolean = false
+    private var settingsInForeground: Boolean = false
 
     override fun onCreate() {
         super.onCreate()
@@ -77,12 +99,18 @@ class OverlayLockService : Service() {
         val reason = intent?.getStringExtra(EXTRA_START_REASON) ?: "unknown"
         val requestedAt = intent?.getLongExtra(EXTRA_REQUESTED_AT, System.currentTimeMillis())
             ?: System.currentTimeMillis()
+        val forceShow = intent?.getBooleanExtra(EXTRA_FORCE_SHOW, false) ?: false
         val sinceLast = previousStartWalltime?.let { requestedAt - it }?.takeIf { it >= 0 }
         Log.d(
             TAG,
             "onStartCommand action=${intent?.action} reason=$reason requestedAt=$requestedAt sinceLast=${sinceLast ?: "-"}ms"
         )
         previousStartWalltime = requestedAt
+        if (forceShow) {
+            endPermissionRecovery()
+        } else {
+            restorePermissionRecoveryIfNeeded()
+        }
 
         when (intent?.action) {
             ACTION_START, null -> startLockDisplay()
@@ -127,6 +155,7 @@ class OverlayLockService : Service() {
         deviceProtectedLockStateJob = null
         userUnlockWatcherJob?.cancel()
         userUnlockWatcherJob = null
+        endPermissionRecovery()
         latestLockState = null
         hideOverlay()
         releaseWakeLock()
@@ -215,7 +244,11 @@ class OverlayLockService : Service() {
         latestLockState = effectiveState
         if (effectiveState.isLocked && effectiveState.lockEndTimestamp != null) {
             ensureForeground()
-            showOverlayIfNeeded()
+            val mode = resolveOverlayMode()
+            if (shouldShowOverlay(mode)) {
+                showOverlayIfNeeded()
+            }
+            updateOverlayModeIfNeeded(mode)
             restartCountdown(effectiveState.lockEndTimestamp)
             demoteForegroundIfNeeded("lock_state_update")
         } else {
@@ -241,6 +274,18 @@ class OverlayLockService : Service() {
     }
 
     private fun updateCountdown(remainingMillis: Long) {
+        val mode = resolveOverlayMode()
+        if (permissionRecoveryInProgress && mode == OverlayMode.LOCK) {
+            endPermissionRecovery()
+            showOverlayIfNeeded()
+        }
+        if (overlayContainer == null && shouldShowOverlay(mode)) {
+            showOverlayIfNeeded()
+        }
+        updateOverlayModeIfNeeded(mode)
+        if (mode == OverlayMode.PERMISSION_RECOVERY) {
+            return
+        }
         val formatted = formatLockRemainingTime(this, remainingMillis)
         countdownTextView?.text = formatted
         if (hasPostNotificationPermission()) {
@@ -251,6 +296,27 @@ class OverlayLockService : Service() {
                 Log.w(TAG, "Notification permission denied at runtime; skipping update", security)
             }
         }
+    }
+
+    private fun launchEmergencyUnlock() {
+        EmergencyUnlockState.setActive(true)
+        stopLockDisplay(clearState = false)
+        val intent = Intent(this, MainActivity::class.java).apply {
+            putExtra(MainActivity.EXTRA_NAV_ROUTE, AppDestination.EmergencyUnlock.route)
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_CLEAR_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+            )
+        }
+        runCatching { startActivity(intent) }
+            .onFailure { throwable ->
+                EmergencyUnlockState.setActive(false)
+                Log.w(TAG, "Failed to launch emergency unlock", throwable)
+                start(this, reason = "emergency_unlock_failed", bypassDebounce = true)
+            }
     }
 
     private fun showOverlayIfNeeded() {
@@ -269,11 +335,7 @@ class OverlayLockService : Service() {
         }
         val metrics = resources.displayMetrics
         val container = FrameLayout(this).apply {
-            val gradientDrawable = android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(COLOR_GRADIENT_END, COLOR_GRADIENT_START)
-            )
-            background = gradientDrawable
+            background = buildLockBackground()
             isClickable = true
             isFocusable = true
         }
@@ -298,6 +360,15 @@ class OverlayLockService : Service() {
             setIncludeFontPadding(false)
         }
 
+        val messageView = TextView(this).apply {
+            setTextColor(COLOR_TEXT_SECONDARY)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            gravity = Gravity.CENTER
+            setIncludeFontPadding(false)
+            visibility = View.GONE
+        }
+
         val textView = TextView(this).apply {
             setTextColor(COLOR_TEXT_DARK_NAVY)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 32f)
@@ -315,6 +386,16 @@ class OverlayLockService : Service() {
             )
         )
         content.addView(
+            messageView,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dpToPx(6f, metrics)
+                bottomMargin = dpToPx(6f, metrics)
+            }
+        )
+        content.addView(
             textView,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -322,6 +403,57 @@ class OverlayLockService : Service() {
             ).apply {
                 topMargin = dpToPx(8f, metrics)
                 bottomMargin = dpToPx(8f, metrics)
+            }
+        )
+
+        val emergencyButtonView = Button(this).apply {
+            text = getString(R.string.overlay_lock_emergency_unlock)
+            setTextColor(COLOR_CLEAN_WHITE)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = dpToPx(14f, metrics).toFloat()
+                setColor(COLOR_TEXT_DARK_NAVY)
+            }
+            setPadding(
+                dpToPx(16f, metrics),
+                dpToPx(10f, metrics),
+                dpToPx(16f, metrics),
+                dpToPx(10f, metrics)
+            )
+            setOnClickListener { launchEmergencyUnlock() }
+        }
+        content.addView(
+            emergencyButtonView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dpToPx(12f, metrics)
+            }
+        )
+
+        val permissionButtonView = Button(this).apply {
+            text = getString(R.string.overlay_lock_permission_button)
+            setTextColor(COLOR_CLEAN_WHITE)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = dpToPx(14f, metrics).toFloat()
+                setColor(COLOR_TEXT_DARK_NAVY)
+            }
+            setPadding(
+                dpToPx(16f, metrics),
+                dpToPx(10f, metrics),
+                dpToPx(16f, metrics),
+                dpToPx(10f, metrics)
+            )
+            setOnClickListener { launchNotificationPermissionSettings() }
+            visibility = View.GONE
+        }
+        content.addView(
+            permissionButtonView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dpToPx(12f, metrics)
             }
         )
 
@@ -368,16 +500,252 @@ class OverlayLockService : Service() {
             }
         )
         overlayContainer = container
+        contentContainer = content
         countdownTextView = textView
+        titleTextView = titleView
+        messageTextView = messageView
+        emergencyButton = emergencyButtonView
+        permissionButton = permissionButtonView
+        applyOverlayMode(overlayMode)
         windowManager.addView(container, layoutParams)
     }
 
     private fun hideOverlay() {
         countdownTextView = null
+        titleTextView = null
+        messageTextView = null
+        emergencyButton = null
+        permissionButton = null
+        contentContainer = null
         overlayContainer?.let { view ->
             runCatching { windowManager.removeView(view) }
         }
         overlayContainer = null
+    }
+
+    private fun resolveOverlayMode(): OverlayMode {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasPostNotificationPermission()) {
+            OverlayMode.PERMISSION_RECOVERY
+        } else {
+            OverlayMode.LOCK
+        }
+    }
+
+    private fun updateOverlayModeIfNeeded(nextMode: OverlayMode) {
+        if (overlayMode == nextMode) return
+        overlayMode = nextMode
+        applyOverlayMode(nextMode)
+    }
+
+    private fun applyOverlayMode(mode: OverlayMode) {
+        when (mode) {
+            OverlayMode.LOCK -> {
+                titleTextView?.text = getString(R.string.overlay_lock_panel_title)
+                messageTextView?.visibility = View.GONE
+                countdownTextView?.visibility = View.VISIBLE
+                emergencyButton?.visibility = View.VISIBLE
+                permissionButton?.visibility = View.GONE
+                updateOverlayBackground(lockMode = true)
+            }
+
+            OverlayMode.PERMISSION_RECOVERY -> {
+                titleTextView?.text = getString(R.string.overlay_lock_permission_title)
+                messageTextView?.text = getString(R.string.overlay_lock_permission_message)
+                messageTextView?.visibility = View.VISIBLE
+                countdownTextView?.visibility = View.GONE
+                emergencyButton?.visibility = View.GONE
+                permissionButton?.visibility = View.VISIBLE
+                updateOverlayBackground(lockMode = false)
+            }
+        }
+    }
+
+    private fun launchNotificationPermissionSettings() {
+        beginPermissionRecovery()
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:$packageName")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching { startActivity(intent) }
+            .onFailure { throwable -> Log.w(TAG, "Failed to open app settings", throwable) }
+    }
+
+    private fun updateOverlayBackground(lockMode: Boolean) {
+        val container = overlayContainer ?: return
+        if (lockMode) {
+            container.background = buildLockBackground()
+            contentContainer?.background = null
+        } else {
+            container.background = buildLockBackground()
+            contentContainer?.background = buildPermissionCardBackground()
+        }
+    }
+
+    private fun beginPermissionRecovery() {
+        permissionRecoveryInProgress = true
+        PermissionRecoveryStore.setActive(this, true)
+        settingsInForeground = false
+        LockMonitorService.start(this, reason = "permission_recovery", bypassDebounce = true)
+        if (hasUsageStatsPermission()) {
+            startPermissionRecoveryMonitor()
+        } else {
+            Log.w(TAG, "Usage access missing; fallback to timed recovery window")
+            startPermissionRecoveryFallback()
+        }
+    }
+
+    private fun shouldShowOverlay(mode: OverlayMode): Boolean {
+        if (overlayContainer != null) return false
+        if (permissionRecoveryInProgress && settingsInForeground && mode == OverlayMode.PERMISSION_RECOVERY) {
+            return false
+        }
+        return true
+    }
+
+    private fun isLockActive(): Boolean {
+        val state = latestLockState
+        val now = System.currentTimeMillis()
+        return state?.isLocked == true && state.lockEndTimestamp?.let { it > now } != false
+    }
+
+    private fun startPermissionRecoveryMonitor() {
+        if (permissionRecoveryMonitorJob?.isActive == true) return
+        permissionRecoveryMonitorJob = serviceScope.launch(Dispatchers.Default) {
+            var lastSettingsState: Boolean? = null
+            var lastSettingsSeenElapsed = 0L
+            var lastForegroundPackage: String? = null
+            while (isActive && permissionRecoveryInProgress) {
+                if (resolveOverlayMode() == OverlayMode.LOCK) {
+                    withContext(Dispatchers.Main.immediate) {
+                        endPermissionRecovery()
+                        showOverlayIfNeeded()
+                        updateOverlayModeIfNeeded(resolveOverlayMode())
+                    }
+                    break
+                }
+                val queryResult = queryForegroundPackage(lastForegroundPackage)
+                if (queryResult.fallbackToTimed) {
+                    withContext(Dispatchers.Main.immediate) {
+                        if (permissionRecoveryInProgress) {
+                            startPermissionRecoveryFallback()
+                        }
+                    }
+                    break
+                }
+                val foregroundPackage = queryResult.packageName
+                if (foregroundPackage != null) {
+                    lastForegroundPackage = foregroundPackage
+                }
+                val nowElapsed = SystemClock.elapsedRealtime()
+                val isSettingsNow = foregroundPackage != null && SettingsPackages.SETTINGS_ONLY.contains(foregroundPackage)
+                if (isSettingsNow) {
+                    lastSettingsSeenElapsed = nowElapsed
+                }
+                val stickySettings = nowElapsed - lastSettingsSeenElapsed < SETTINGS_STICKY_MILLIS
+                if (lastSettingsState == null || lastSettingsState != stickySettings) {
+                    lastSettingsState = stickySettings
+                    settingsInForeground = stickySettings
+                    withContext(Dispatchers.Main.immediate) {
+                        if (stickySettings) {
+                            hideOverlay()
+                        } else if (shouldShowOverlay(resolveOverlayMode())) {
+                            showOverlayIfNeeded()
+                            updateOverlayModeIfNeeded(resolveOverlayMode())
+                        }
+                    }
+                }
+                delay(PERMISSION_RECOVERY_POLL_INTERVAL_MILLIS)
+            }
+        }
+    }
+
+    private fun startPermissionRecoveryFallback() {
+        if (permissionRecoveryFallbackJob?.isActive == true) return
+        hideOverlay()
+        permissionRecoveryFallbackJob = serviceScope.launch {
+            delay(PERMISSION_RECOVERY_FALLBACK_HIDE_MILLIS)
+            if (resolveOverlayMode() == OverlayMode.PERMISSION_RECOVERY && isLockActive()) {
+                showOverlayIfNeeded()
+                updateOverlayModeIfNeeded(resolveOverlayMode())
+            }
+        }
+    }
+
+    private fun queryForegroundPackage(lastKnownPackage: String?): ForegroundQueryResult {
+        var lastPackage: String? = lastKnownPackage
+        try {
+            foregroundEventSource.collectRecentEvents(PERMISSION_RECOVERY_QUERY_WINDOW_MILLIS) { pkg ->
+                lastPackage = pkg
+            }
+        } catch (security: SecurityException) {
+            Log.w(TAG, "Usage access permission missing during recovery", security)
+            return ForegroundQueryResult(packageName = lastKnownPackage, fallbackToTimed = true)
+        } catch (throwable: Throwable) {
+            Log.w(TAG, "Failed to query foreground package during recovery", throwable)
+            return ForegroundQueryResult(packageName = lastKnownPackage, fallbackToTimed = false)
+        }
+        val normalized = lastPackage?.trim()?.takeIf { it.isNotEmpty() }
+        return ForegroundQueryResult(packageName = normalized, fallbackToTimed = false)
+    }
+
+    private fun endPermissionRecovery() {
+        permissionRecoveryInProgress = false
+        settingsInForeground = false
+        PermissionRecoveryStore.setActive(this, false)
+        permissionRecoveryMonitorJob?.cancel()
+        permissionRecoveryMonitorJob = null
+        permissionRecoveryFallbackJob?.cancel()
+        permissionRecoveryFallbackJob = null
+    }
+
+    private fun restorePermissionRecoveryIfNeeded() {
+        if (permissionRecoveryInProgress) return
+        if (!PermissionRecoveryStore.isActive(this)) return
+        if (resolveOverlayMode() == OverlayMode.LOCK) {
+            PermissionRecoveryStore.setActive(this, false)
+            return
+        }
+        permissionRecoveryInProgress = true
+        settingsInForeground = false
+        if (hasUsageStatsPermission()) {
+            startPermissionRecoveryMonitor()
+        } else {
+            startPermissionRecoveryFallback()
+        }
+    }
+
+    private fun hasUsageStatsPermission(): Boolean {
+        val appOps = getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager ?: return false
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOps.unsafeCheckOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                packageName
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            appOps.checkOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                packageName
+            )
+        }
+        return mode == AppOpsManager.MODE_ALLOWED || mode == AppOpsManager.MODE_FOREGROUND
+    }
+
+    private fun buildLockBackground(): android.graphics.drawable.GradientDrawable {
+        return android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(COLOR_GRADIENT_END, COLOR_GRADIENT_START)
+        )
+    }
+
+    private fun buildPermissionCardBackground(): android.graphics.drawable.GradientDrawable {
+        val metrics = resources.displayMetrics
+        return android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = dpToPx(18f, metrics).toFloat()
+            setColor(COLOR_CLEAN_WHITE)
+        }
     }
 
     private fun acquireWakeLock() {
@@ -494,9 +862,14 @@ class OverlayLockService : Service() {
         private const val RESTART_DEBOUNCE_MILLIS = 3_000L
         private const val RESTART_REASON = "service_restart"
         private const val WAKE_LOCK_TIMEOUT_MILLIS = 180_000L
+        private const val PERMISSION_RECOVERY_QUERY_WINDOW_MILLIS = 2_000L
+        private const val PERMISSION_RECOVERY_POLL_INTERVAL_MILLIS = 750L
+        private const val PERMISSION_RECOVERY_FALLBACK_HIDE_MILLIS = 8_000L
+        private const val SETTINGS_STICKY_MILLIS = 1_500L
         private const val EXTRA_START_REASON = "extra_start_reason"
         private const val EXTRA_REQUESTED_AT = "extra_requested_at"
         private const val EXTRA_DEBOUNCE_HANDLED = "extra_debounce_handled"
+        private const val EXTRA_FORCE_SHOW = "extra_force_show"
         private var previousStartWalltime: Long? = null
 
         @Volatile
@@ -512,8 +885,17 @@ class OverlayLockService : Service() {
 
         const val ACTION_START = "jp.kawai.ultrafocus.action.START_LOCK"
 
-        fun start(context: Context, reason: String = "unknown", bypassDebounce: Boolean = false) {
+        fun start(
+            context: Context,
+            reason: String = "unknown",
+            bypassDebounce: Boolean = false,
+            forceShow: Boolean = false
+        ) {
             if (shouldDebounce(reason, bypassDebounce)) return
+            if (EmergencyUnlockState.isActive()) {
+                Log.d(TAG, "Skip overlay start; emergency unlock active (reason=$reason)")
+                return
+            }
 
             val appContext = context.applicationContext
             val intent = Intent(appContext, OverlayLockService::class.java).apply {
@@ -521,6 +903,7 @@ class OverlayLockService : Service() {
                 putExtra(EXTRA_START_REASON, reason)
                 putExtra(EXTRA_REQUESTED_AT, System.currentTimeMillis())
                 putExtra(EXTRA_DEBOUNCE_HANDLED, true)
+                putExtra(EXTRA_FORCE_SHOW, forceShow)
             }
             val canStartForeground =
                 Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
@@ -563,6 +946,16 @@ class OverlayLockService : Service() {
             lastStartElapsedRealtime = nowElapsed
             return false
         }
+    }
+
+    private data class ForegroundQueryResult(
+        val packageName: String?,
+        val fallbackToTimed: Boolean
+    )
+
+    private enum class OverlayMode {
+        LOCK,
+        PERMISSION_RECOVERY
     }
 
     private fun supportsDeviceProtectedStorage(): Boolean =

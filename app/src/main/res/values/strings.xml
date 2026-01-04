@@ -49,6 +49,9 @@
     <string name="overlay_lock_panel_title"></string>
     <string name="overlay_lock_panel_hint">解除するにはアプリに戻ってください</string>
     <string name="overlay_lock_emergency_unlock">緊急解除へ</string>
+    <string name="overlay_lock_permission_title">通知の許可が必要です</string>
+    <string name="overlay_lock_permission_message">ロックを維持するために通知の許可をオンにしてください。</string>
+    <string name="overlay_lock_permission_button">設定を開く</string>
     <string name="lock_monitor_notification_channel">ロック監視</string>
     <string name="lock_monitor_notification_title">使用状況を監視中</string>
     <string name="lock_monitor_notification_content">ロックを維持するために監視しています</string>

@@ -4,7 +4,7 @@ package jp.kawai.ultrafocus.data.repository
  * 設定アプリ関連のパッケージ一覧。SystemUI やその他アプリは対象外。
  */
 object SettingsPackages {
-    val TARGETS: Set<String> = setOf(
+    val SETTINGS_ONLY: Set<String> = setOf(
         "com.android.settings",
         "com.google.android.permissioncontroller",
         "com.android.permissioncontroller",
@@ -16,7 +16,10 @@ object SettingsPackages {
         "com.huawei.systemmanager",
         "com.oneplus.security",
         "com.realme.securitycenter",
-        "com.coloros.safecenter",
+        "com.coloros.safecenter"
+    )
+
+    val TARGETS: Set<String> = SETTINGS_ONLY + setOf(
         // SystemUI (Notification Shade / Quick Settings / Recents on some devices)
         "com.android.systemui",
         // Launchers (Home Screen / Recents)

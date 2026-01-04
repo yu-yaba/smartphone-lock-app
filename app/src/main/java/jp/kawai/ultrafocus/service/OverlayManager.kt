@@ -17,7 +17,7 @@ open class OverlayManager @Inject constructor(
     open fun show(bypassDebounce: Boolean = false) {
         Log.d(TAG, "Requesting overlay display")
         LockMonitorService.start(context, bypassDebounce = bypassDebounce)
-        OverlayLockService.start(context, bypassDebounce = bypassDebounce)
+        OverlayLockService.start(context, bypassDebounce = bypassDebounce, forceShow = true)
     }
 
     open fun hide() {
