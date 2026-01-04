@@ -136,9 +136,16 @@ class DefaultLockPermissionsRepository @Inject constructor(
     private fun startAppOpsWatchers() {
         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager
             ?: return
+        val watchedOps = mutableSetOf(
+            AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW,
+            AppOpsManager.OPSTR_GET_USAGE_STATS
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            watchedOps.add(AppOpsManager.OPSTR_POST_NOTIFICATION)
+        }
         val listener = AppOpsManager.OnOpChangedListener { op, pkg ->
             if (pkg != context.packageName) return@OnOpChangedListener
-            if (op == AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW || op == AppOpsManager.OPSTR_GET_USAGE_STATS) {
+            if (op in watchedOps) {
                 Log.i(TAG, "AppOp changed for $op; re-evaluating permissions")
                 scope.launch { emitLatestState() }
             }
@@ -146,5 +153,8 @@ class DefaultLockPermissionsRepository @Inject constructor(
         // register watchers for both Overlay and Usage access
         appOps.startWatchingMode(AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW, context.packageName, listener)
         appOps.startWatchingMode(AppOpsManager.OPSTR_GET_USAGE_STATS, context.packageName, listener)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            appOps.startWatchingMode(AppOpsManager.OPSTR_POST_NOTIFICATION, context.packageName, listener)
+        }
     }
 }

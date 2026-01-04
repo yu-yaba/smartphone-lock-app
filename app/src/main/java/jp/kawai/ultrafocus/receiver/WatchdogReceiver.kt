@@ -1,13 +1,18 @@
 package jp.kawai.ultrafocus.receiver
 
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.UserManager
 import android.util.Log
+import androidx.core.content.ContextCompat
 import jp.kawai.ultrafocus.data.datastore.DataStoreManager
 import jp.kawai.ultrafocus.data.datastore.DeviceProtectedLockStatePreferences
 import jp.kawai.ultrafocus.data.datastore.LockStatePreferences
+import jp.kawai.ultrafocus.data.repository.LockPermissionsRepository
 import jp.kawai.ultrafocus.service.LockMonitorService
 import jp.kawai.ultrafocus.service.OverlayLockService
 import jp.kawai.ultrafocus.service.WatchdogScheduler
@@ -24,6 +29,9 @@ class WatchdogReceiver : BroadcastReceiver() {
 
     @Inject
     lateinit var dataStoreManager: DataStoreManager
+
+    @Inject
+    lateinit var lockPermissionsRepository: LockPermissionsRepository
 
     override fun onReceive(context: Context, intent: Intent?) {
         val action = intent?.action ?: return
@@ -51,6 +59,10 @@ class WatchdogReceiver : BroadcastReceiver() {
             WatchdogScheduler.cancelHeartbeat(context)
             WatchdogWorkScheduler.cancel(context)
             return
+        }
+        if (!context.hasPostNotificationPermissionCompat()) {
+            Log.w(TAG, "Notification permission missing during lock; refreshing permission state")
+            lockPermissionsRepository.refreshPermissionState()
         }
         LockMonitorService.start(context)
         OverlayLockService.start(context)
@@ -99,3 +111,11 @@ private fun DeviceProtectedLockStatePreferences.toSnapshot(): LockStatePreferenc
 
 private fun Context.isUserUnlocked(): Boolean =
     getSystemService(UserManager::class.java)?.isUserUnlocked ?: true
+
+private fun Context.hasPostNotificationPermissionCompat(): Boolean {
+    return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+}
