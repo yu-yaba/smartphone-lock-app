@@ -9,6 +9,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import jp.kawai.ultrafocus.data.repository.LockRepository
 import jp.kawai.ultrafocus.ui.theme.UltraFocusTheme
+import jp.kawai.ultrafocus.BuildConfig
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.flow.collect
@@ -41,6 +42,12 @@ class LockRedirectActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (AllowedAppLaunchStore.isLaunchInProgress(this) || AllowedAppLaunchStore.isSessionActive(this)) {
+            finish()
+            return
+        }
+        val triggerPackage = intent?.getStringExtra(EXTRA_TRIGGER_PACKAGE)
+        val triggerReason = intent?.getStringExtra(EXTRA_TRIGGER_REASON)
 
         // 戻るキー無効化（ロック解除時にのみ閉じる）
         onBackPressedDispatcher.addCallback(this) { /* no-op while locked */ }
@@ -83,6 +90,18 @@ class LockRedirectActivity : ComponentActivity() {
                             textAlign = TextAlign.Center,
                             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f)
                         )
+                        if (BuildConfig.DEBUG && (!triggerPackage.isNullOrBlank() || !triggerReason.isNullOrBlank())) {
+                            Text(
+                                text = listOfNotNull(
+                                    triggerReason?.takeIf { it.isNotBlank() }?.let { "reason=$it" },
+                                    triggerPackage?.takeIf { it.isNotBlank() }?.let { "pkg=$it" }
+                                ).joinToString(separator = " "),
+                                style = MaterialTheme.typography.bodySmall,
+                                textAlign = TextAlign.Center,
+                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                                modifier = Modifier.padding(top = 12.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -91,7 +110,22 @@ class LockRedirectActivity : ComponentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
+        if (AllowedAppLaunchStore.isLaunchInProgress(this) || AllowedAppLaunchStore.isSessionActive(this)) {
+            return
+        }
         // ホーム/タスク切替を試みた場合も前面を奪い返す
         lockUiLauncher.bringToFront()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (AllowedAppLaunchStore.isLaunchInProgress(this) || AllowedAppLaunchStore.isSessionActive(this)) {
+            finish()
+        }
+    }
+
+    companion object {
+        const val EXTRA_TRIGGER_PACKAGE = "extra_trigger_package"
+        const val EXTRA_TRIGGER_REASON = "extra_trigger_reason"
     }
 }

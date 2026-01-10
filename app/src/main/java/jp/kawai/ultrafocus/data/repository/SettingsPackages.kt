@@ -19,17 +19,29 @@ object SettingsPackages {
         "com.coloros.safecenter"
     )
 
-    val TARGETS: Set<String> = SETTINGS_ONLY + setOf(
-        // SystemUI (Notification Shade / Quick Settings / Recents on some devices)
+    val PERMISSION_CONTROLLER_ONLY: Set<String> = setOf(
+        "com.google.android.permissioncontroller",
+        "com.android.permissioncontroller"
+    )
+
+    val SYSTEM_UI_ONLY: Set<String> = setOf(
         "com.android.systemui",
-        // Launchers (Home Screen / Recents)
+        "android"
+    )
+
+    val LAUNCHERS_ONLY: Set<String> = setOf(
         "com.google.android.apps.nexuslauncher", // Pixel
         "com.android.launcher3",                 // AOSP
         "com.sec.android.app.launcher",          // Samsung
         "com.miui.home",                         // Xiaomi
         "com.huawei.android.launcher",           // Huawei
         "com.oppo.launcher",                     // Oppo
-        "com.vivo.launcher",                     // Vivo
+        "com.vivo.launcher"                      // Vivo
+    )
+
+    val TRANSIENT_ONLY: Set<String> = SYSTEM_UI_ONLY + LAUNCHERS_ONLY
+
+    val TARGETS: Set<String> = SETTINGS_ONLY + setOf(
         // Voice Assistants
         "com.google.android.googlequicksearchbox", // Google App / Assistant
         "com.google.android.apps.googleassistant", // Assistant standalone
@@ -50,5 +62,5 @@ object SettingsPackages {
         "com.oppo.market",                       // Oppo Market
         "com.vivo.appstore",                     // Vivo App Store
         "com.huawei.appmarket"                   // Huawei AppGallery
-    )
+    ) + TRANSIENT_ONLY
 }

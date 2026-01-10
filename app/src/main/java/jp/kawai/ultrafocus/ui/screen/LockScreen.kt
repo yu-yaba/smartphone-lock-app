@@ -337,6 +337,7 @@ private fun LockStatusRow(
     }
 }
 
+
 @Composable
 private fun StatusPill(
     text: String,

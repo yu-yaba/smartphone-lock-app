@@ -21,6 +21,7 @@ import jp.kawai.ultrafocus.R
 import jp.kawai.ultrafocus.data.repository.LockRepository
 import jp.kawai.ultrafocus.data.repository.SettingsPackages
 import jp.kawai.ultrafocus.emergency.EmergencyUnlockState
+import jp.kawai.ultrafocus.emergency.EmergencyUnlockStateStore
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -63,6 +64,15 @@ class LockMonitorService : Service() {
     private val overlayThrottler = PackageEventThrottler(BLACKLIST_OVERLAY_DEBOUNCE_MILLIS)
     private val lockUiRedirectThrottler = PackageEventThrottler(LOCK_UI_REDIRECT_DEBOUNCE_MILLIS)
     private val emergencyRedirectThrottler = PackageEventThrottler(EMERGENCY_REDIRECT_DEBOUNCE_MILLIS)
+    private val allowedAppThrottler = PackageEventThrottler(ALLOWED_APP_HIDE_DEBOUNCE_MILLIS)
+    @Volatile
+    private var allowedAppForeground: Boolean = false
+    @Volatile
+    private var lastAllowedAppSeenElapsed: Long = 0L
+    @Volatile
+    private var pendingAllowedSessionExitPackage: String? = null
+    @Volatile
+    private var pendingAllowedSessionExitStartedAt: Long = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -92,6 +102,7 @@ class LockMonitorService : Service() {
         previousStartWalltime = requestedAt
 
         acquireWakeLock()
+        lockRepository.refreshDynamicLists()
         ensureForeground(reason)
         startMonitoring()
         demoteForegroundIfNeeded("startCommand")
@@ -121,25 +132,7 @@ class LockMonitorService : Service() {
             if (!isLocked) return@start
             val normalized = packageName.trim()
             if (normalized.isEmpty()) return@start
-            if (EmergencyUnlockState.isActive()) {
-                if (normalized != this.packageName) {
-                    serviceScope.launch {
-                        redirectToEmergencyUnlock(normalized, reason = "foreground_detected")
-                    }
-                }
-                return@start
-            }
-            if (!hasPostNotificationPermissionCompat() &&
-                PermissionRecoveryStore.isActive(this@LockMonitorService) &&
-                SettingsPackages.SETTINGS_ONLY.contains(normalized)
-            ) {
-                Log.d(TAG, "Skip redirect during permission recovery for package=$normalized")
-                return@start
-            }
-            if (lockRepository.shouldForceLockUi(normalized)) {
-                val reason = resolveReasonLabel(normalized)
-                serviceScope.launch { handleForcedRedirect(normalized, reason) }
-            }
+            serviceScope.launch { handleForegroundPackage(normalized) }
         }
     }
 
@@ -173,9 +166,123 @@ class LockMonitorService : Service() {
 
     private fun updateCurrentLockState(nextState: Boolean) {
         isLocked = nextState
+        if (!nextState) {
+            allowedAppForeground = false
+        }
         if (nextState) {
             // ロック開始時は確実に即時オーバーレイを掲出したいのでデバウンスを無視する
             overlayManager.show(bypassDebounce = true)
+        }
+    }
+
+    private suspend fun handleForegroundPackage(packageName: String) {
+        val nowElapsed = SystemClock.elapsedRealtime()
+        if (EmergencyUnlockState.isActive() || EmergencyUnlockStateStore.isActive(this@LockMonitorService)) {
+            if (packageName != this.packageName) {
+                redirectToEmergencyUnlock(packageName, reason = "foreground_detected")
+            }
+            return
+        }
+        val launchInProgress = AllowedAppLaunchStore.isLaunchInProgress(this@LockMonitorService)
+        var sessionActive = AllowedAppLaunchStore.isSessionActive(this@LockMonitorService)
+
+        if (launchInProgress &&
+            (packageName == this.packageName ||
+                SettingsPackages.TRANSIENT_ONLY.contains(packageName) ||
+                SettingsPackages.PERMISSION_CONTROLLER_ONLY.contains(packageName))
+        ) {
+            return
+        }
+
+        if (sessionActive &&
+            (SettingsPackages.SYSTEM_UI_ONLY.contains(packageName) ||
+                SettingsPackages.PERMISSION_CONTROLLER_ONLY.contains(packageName))
+        ) {
+            return
+        }
+        val allowedTargets = lockRepository.allowedAppTargets()
+        val isTemporarilyAllowed = AllowedAppLaunchStore.isAllowed(this, packageName)
+        val isAllowedApp = allowedTargets.isAllowed(packageName) || isTemporarilyAllowed
+        if (isAllowedApp) {
+            allowedAppForeground = true
+            lastAllowedAppSeenElapsed = nowElapsed
+            pendingAllowedSessionExitPackage = null
+            pendingAllowedSessionExitStartedAt = 0L
+            forcedRedirectJob?.cancel()
+            AllowedAppLaunchStore.clearLaunch(this@LockMonitorService)
+            AllowedAppLaunchStore.extendSession(this@LockMonitorService, ttlMillis = ALLOWED_APP_SESSION_TTL_MILLIS)
+            if (allowedAppThrottler.shouldTrigger(packageName)) {
+                OverlayLockService.setAllowedAppSuppressed(this@LockMonitorService, true)
+            }
+            return
+        }
+
+        if (allowedAppForeground && SettingsPackages.SYSTEM_UI_ONLY.contains(packageName)) {
+            return
+        }
+
+        val inPermissionRecoverySettings = isPermissionRecoverySettings(packageName)
+        if (sessionActive && SettingsPackages.LAUNCHERS_ONLY.contains(packageName)) {
+            if (launchInProgress && !allowedAppForeground) {
+                return
+            }
+            sessionActive = false
+            allowedAppForeground = false
+            lastAllowedAppSeenElapsed = 0L
+            pendingAllowedSessionExitPackage = null
+            pendingAllowedSessionExitStartedAt = 0L
+            AllowedAppLaunchStore.clear(this@LockMonitorService)
+            OverlayLockService.setAllowedAppSuppressed(this@LockMonitorService, false)
+            if (!inPermissionRecoverySettings) {
+                overlayManager.show(bypassDebounce = true)
+            }
+            return
+        }
+        if (sessionActive && !SettingsPackages.SYSTEM_UI_ONLY.contains(packageName)) {
+            if (pendingAllowedSessionExitPackage == packageName &&
+                nowElapsed - pendingAllowedSessionExitStartedAt >= ALLOWED_APP_SESSION_EXIT_CONFIRM_MILLIS
+            ) {
+                sessionActive = false
+                allowedAppForeground = false
+                lastAllowedAppSeenElapsed = 0L
+                pendingAllowedSessionExitPackage = null
+                pendingAllowedSessionExitStartedAt = 0L
+                AllowedAppLaunchStore.clear(this@LockMonitorService)
+                OverlayLockService.setAllowedAppSuppressed(this@LockMonitorService, false)
+                if (!inPermissionRecoverySettings) {
+                    overlayManager.show(bypassDebounce = true)
+                }
+            } else {
+                pendingAllowedSessionExitPackage = packageName
+                pendingAllowedSessionExitStartedAt = nowElapsed
+                return
+            }
+        } else if (allowedAppForeground && packageName != this.packageName && !SettingsPackages.TRANSIENT_ONLY.contains(packageName)) {
+            allowedAppForeground = false
+            lastAllowedAppSeenElapsed = 0L
+            pendingAllowedSessionExitPackage = null
+            pendingAllowedSessionExitStartedAt = 0L
+            AllowedAppLaunchStore.clear(this@LockMonitorService)
+            OverlayLockService.setAllowedAppSuppressed(this@LockMonitorService, false)
+            if (!inPermissionRecoverySettings) {
+                overlayManager.show(bypassDebounce = true)
+            }
+        }
+
+        if (launchInProgress || sessionActive) {
+            return
+        }
+
+        if (inPermissionRecoverySettings) {
+            Log.d(TAG, "Skip redirect during permission recovery for package=$packageName")
+            return
+        }
+
+        if (lockRepository.shouldForceLockUi(packageName)) {
+            val reason = resolveReasonLabel(packageName)
+            handleForcedRedirect(packageName, reason)
+        } else {
+            handleBlacklistedPackage(packageName, reason = "disallowed_app")
         }
     }
 
@@ -190,7 +297,7 @@ class LockMonitorService : Service() {
     }
 
     private suspend fun handleForcedRedirect(packageName: String, reason: String) {
-        if (EmergencyUnlockState.isActive()) {
+        if (EmergencyUnlockState.isActive() || EmergencyUnlockStateStore.isActive(this@LockMonitorService)) {
             redirectToEmergencyUnlock(packageName, reason = "forced_redirect")
             return
         }
@@ -203,8 +310,14 @@ class LockMonitorService : Service() {
             val start = SystemClock.elapsedRealtime()
             var iteration = 0
             while (isActive && isLocked && SystemClock.elapsedRealtime() - start <= FORCED_REDIRECT_BURST_MILLIS) {
+                if (AllowedAppLaunchStore.isLaunchInProgress(this@LockMonitorService) ||
+                    AllowedAppLaunchStore.isSessionActive(this@LockMonitorService)
+                ) {
+                    Log.d(TAG, "Stop redirect burst; allowed app session active")
+                    break
+                }
                 iteration++
-                if (EmergencyUnlockState.isActive()) {
+                if (EmergencyUnlockState.isActive() || EmergencyUnlockStateStore.isActive(this@LockMonitorService)) {
                     redirectToEmergencyUnlock(packageName, reason = "redirect_burst")
                     break
                 }
@@ -212,7 +325,7 @@ class LockMonitorService : Service() {
                 runCatching { overlayManager.show(bypassDebounce = true) }
                     .onFailure { Log.w(TAG, "Failed to force overlay (iteration=$iteration)", it) }
                 // 自前 UI を最前面へ
-                runCatching { lockUiLauncher.bringToFront() }
+                runCatching { lockUiLauncher.bringToFront(triggerPackage = packageName, triggerReason = reason) }
                     .onFailure { Log.w(TAG, "Failed to bring lock UI (iteration=$iteration)", it) }
                 delay(FORCED_REDIRECT_INTERVAL_MILLIS)
             }
@@ -234,6 +347,12 @@ class LockMonitorService : Service() {
             return "permission_controller"
         }
         return "settings"
+    }
+
+    private fun isPermissionRecoverySettings(packageName: String): Boolean {
+        return !hasPostNotificationPermissionCompat() &&
+            PermissionRecoveryStore.isActive(this@LockMonitorService) &&
+            SettingsPackages.SETTINGS_ONLY.contains(packageName)
     }
 
     private fun ensureForeground(reason: String) {
@@ -336,6 +455,9 @@ class LockMonitorService : Service() {
         private const val BLACKLIST_OVERLAY_DEBOUNCE_MILLIS = 1_000L
         private const val LOCK_UI_REDIRECT_DEBOUNCE_MILLIS = 1_500L
         private const val EMERGENCY_REDIRECT_DEBOUNCE_MILLIS = 350L
+        private const val ALLOWED_APP_HIDE_DEBOUNCE_MILLIS = 1_000L
+        private const val ALLOWED_APP_SESSION_TTL_MILLIS = 60_000L
+        private const val ALLOWED_APP_SESSION_EXIT_CONFIRM_MILLIS = 400L
         private const val FORCED_REDIRECT_BURST_MILLIS = 5_000L
         private const val FORCED_REDIRECT_INTERVAL_MILLIS = 400L
         private const val START_DEBOUNCE_MILLIS = 12_000L

@@ -21,6 +21,11 @@ interface LockRepository {
     fun shouldForceLockUi(packageName: String): Boolean
 
     /**
+     * ロック中に許可する外部アプリ（電話/SMS）のパッケージ情報を返す。
+     */
+    fun allowedAppTargets(): AllowedAppTargets
+
+    /**
      * 端末の既定ダイヤラ/SMS アプリなど、動的に許可すべきアプリ一覧を再評価する。
      */
     fun refreshDynamicLists()
