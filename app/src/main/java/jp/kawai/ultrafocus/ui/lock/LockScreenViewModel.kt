@@ -230,6 +230,7 @@ class LockScreenViewModel @Inject constructor(
         }
     }
 
+
     private fun startCountdown(lockEndTimestamp: Long) {
         countdownJob = viewModelScope.launch {
             while (true) {

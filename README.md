@@ -14,15 +14,15 @@ Supabase 連携は現状オプション扱いで、URL / Key が未設定でも�
 
 ---
 
-## 2. 現在の実装スナップショット（2026/01/04 時点）
-更新根拠: 2026/01/04 通知権限復帰導線の仕様化と監視強化
+## 2. 現在の実装スナップショット（2026/01/10 時点）
+更新根拠: 2026/01/10 電話/SMS起動失敗の調査メモを追加
 | フェーズ | ステータス | 現状ハイライト | 次のアクション |
 |---------|------------|----------------|----------------|
 | 0. 基盤整備 | 🟢 完了 | Compose / Hilt / Navigation の土台を `gradle/libs.versions.toml` と `app/build.gradle.kts` に統合。`./gradlew assembleDebug` が安定。 | Lint / Test の CI 自動化（任意）。 |
 | 1. Supabase 設定 | 🟡 任意・無効化可 | BuildConfig から URL / Key を渡せば `SupabaseModule` でクライアント生成。未設定時は `null` を DI しログのみでスキップ。 | 実際の API 実装を行う場合に設定を投入。 |
 | 2. 権限導入 | 🟢 完了 | `PermissionIntroScreen` と `DefaultLockPermissionsRepository` が Overlay / Usage / 正確アラーム / 通知（Android 13+）を監視し、いずれか欠けると権限画面を強制表示。Android 12+ は正確アラーム設定画面へ遷移ボタンを提供。 | ロック中に権限や正確アラームが剥奪された際の復帰 UX。 |
 | 3. ロック UI + Overlay | 🟢 完了 | `LockScreen` ダイヤル UI（分ダイヤルが時間に連動する不具合を解消）、開始確認ダイアログ、`LockScreenViewModel` の DataStore 連携、`OverlayLockService` のフルスクリーン表示と Direct Boot 保存。デバッグ時のみ即時解除ボタンをオーバーレイに追加。 | Overlay 文言／アクセシビリティ調整、Alarm 連携へ布石。 |
-| 4. Foreground 監視 | 🟡 一部 | `LockMonitorService` + `UsageWatcher` が設定・SystemUI・主要ランチャー・音声アシスタント・インストーラ・主要アプリストアを検知し `OverlayManager`/`LockUiLauncher` を発火。`PackageEventThrottler` でデバウンス。 | ActivityManager フォールバックや端末依存差異への追加対策。 |
+| 4. Foreground 監視 | 🟡 一部 | `LockMonitorService` + `UsageWatcher` が設定・SystemUI・主要ランチャー・音声アシスタント・インストーラ・主要アプリストアを検知し `OverlayManager`/`LockUiLauncher` を発火。`PackageEventThrottler` でデバウンス。ロック中は既定ダイヤラ/SMSのみ例外許可し、オーバーレイからショートカット起動を提供。 | ActivityManager フォールバックや端末依存差異への追加対策。 |
 | 5. 通知ブロック | ⚪ 未着手 | `LockNotificationListenerService` を Manifest 登録のみ。通知ブロックは未実装だが、Android 13+ は `POST_NOTIFICATIONS` をロック必須権限として扱う。 | 通知カテゴリ判定→ `cancelNotification`、通知経由の抜け道封鎖を実装する場合に再度許可を誘導。 |
 | 6. AlarmManager 連携 | 🟡 一部 | `WatchdogScheduler` が正確アラームで 3 分毎のハートビートとロック終了アラームを予約し、`BootCompletedReceiver` が CE/DP のスナップショットを見てサービス再起動＆ウォッチドッグ再設定。`ServiceRestartScheduler` で強制終了後も `LockMonitorService` / `OverlayLockService` を再起動。 | WorkManager 自己診断や正確アラーム拒否端末へのフォールバック、解除通知 UX の設計。 |
 | 7. テスト & QA | ⚪ 未着手 | テンプレートテストを削除済み（現在テストゼロ）。 | ViewModel / Repository / Service の単体テスト、権限〜ロックの UI テスト、再起動手動検証。 |
@@ -43,6 +43,8 @@ Supabase 連携は現状オプション扱いで、URL / Key が未設定でも�
 ### 3.3 オーバーレイと UsageStats 監視
 - `OverlayLockService` は Foreground 通知 + フルスクリーン `WindowManager` オーバーレイで残り時間を表示し、端末ロック時は Device Protected ストアを参照する。Credential Encrypted ストアが読めない場合は DP スナップショットへフォールバックしつつ継続し、タスクキル時は `ServiceRestartScheduler` で再起動を予約。起動直後に foreground を即時降格する短時間FGS運用で通知シェードに残りにくくしている。`formatLockRemainingTime()` を用いて 1 秒ごとに更新。
 - `LockMonitorService` は WakeLock と Foreground 通知で常駐し、`UsageWatcher`（UsageStats API）を 750ms 間隔でポーリング。`SettingsPackages` に該当する（設定／SystemUI／ホーム／音声アシスタント／インストーラ／主要ストア）アプリが前面に来た際は `OverlayManager.show()` と `LockUiLauncher.bringToFront()` で自アプリを復帰させる。Foreground は dataSync 種別のみを使用し、起動直後に降格する。
+- ロック中は端末の既定ダイヤラ/SMSのみを例外許可し、前面に来た間だけオーバーレイを一時的に退避する。
+- オーバーレイに電話/SMSのショートカットを配置し、ロック中でも緊急連絡を起動できるようにする。
 - `PackageEventThrottler` で Overlay 再描画と再起動をデバウンスし、`ServiceRestartScheduler` が `LockMonitorService` / `OverlayLockService` の強制終了後再起動を共通化。
 - オーバーレイは全画面タッチを食い止め、カットアウト領域まで覆うレイアウトを採用。デバッグビルドのみ赤い即時解除ボタンを表示する。
 - `UsageStatsForegroundAppEventSource.collectRecentEvents` は SecurityException などを握りつぶし、監視が落ちないよう防御的にラップしている。

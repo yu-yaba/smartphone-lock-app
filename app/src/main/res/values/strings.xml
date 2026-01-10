@@ -43,6 +43,8 @@
     <string name="lock_screen_remaining_time_hours_minutes">残り %1$d時間%2$d分</string>
     <string name="lock_screen_remaining_time_minutes_seconds">残り %1$d分%2$d秒</string>
     <string name="lock_screen_remaining_time_seconds">残り %1$d秒</string>
+    <string name="lock_overlay_shortcut_phone">電話</string>
+    <string name="lock_overlay_shortcut_sms">SMS</string>
     <string name="overlay_service_notification_channel">ロック</string>
     <string name="overlay_service_notification_title">スマホをロック中</string>
     <string name="overlay_service_notification_content">ロックを実行中です</string>

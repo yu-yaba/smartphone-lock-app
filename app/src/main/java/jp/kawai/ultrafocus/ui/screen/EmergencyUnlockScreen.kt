@@ -44,6 +44,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import jp.kawai.ultrafocus.R
 import jp.kawai.ultrafocus.emergency.EMERGENCY_UNLOCK_DECLARATION_V1
+import jp.kawai.ultrafocus.emergency.EmergencyUnlockStateStore
 import jp.kawai.ultrafocus.ui.emergency.EmergencyUnlockViewModel
 import jp.kawai.ultrafocus.ui.emergency.NoPasteEditText
 import jp.kawai.ultrafocus.ui.theme.gradients
@@ -64,6 +65,7 @@ fun EmergencyUnlockScreen(
     val context = LocalContext.current
 
     BackHandler {
+        EmergencyUnlockStateStore.setActive(context, false)
         viewModel.resetInput()
         onBackToLock()
     }
@@ -86,6 +88,7 @@ fun EmergencyUnlockScreen(
         onInputChange = viewModel::updateInput,
         onUnlock = viewModel::requestUnlock,
         onBackToLock = {
+            EmergencyUnlockStateStore.setActive(context, false)
             viewModel.resetInput()
             onBackToLock()
         },

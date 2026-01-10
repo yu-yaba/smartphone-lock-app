@@ -12,4 +12,15 @@
         <item name="android:windowDisablePreview">true</item>
         <item name="android:windowFullscreen">true</item>
     </style>
+
+    <!-- 透明で中継起動用 -->
+    <style name="Theme.UltraFocus.Transparent" parent="Theme.UltraFocus">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Translucent</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:windowFullscreen">true</item>
+    </style>
 </resources>

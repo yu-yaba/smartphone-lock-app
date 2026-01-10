@@ -15,6 +15,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import jp.kawai.ultrafocus.emergency.EmergencyUnlockState
+import jp.kawai.ultrafocus.emergency.EmergencyUnlockStateStore
 import jp.kawai.ultrafocus.navigation.AppDestination
 import jp.kawai.ultrafocus.ui.lock.LockScreenViewModel
 import jp.kawai.ultrafocus.ui.screen.EmergencyUnlockScreen
@@ -22,6 +23,7 @@ import jp.kawai.ultrafocus.ui.screen.LockScreen
 import jp.kawai.ultrafocus.ui.screen.PermissionIntroScreen
 import jp.kawai.ultrafocus.ui.theme.GradientSkyEnd
 import jp.kawai.ultrafocus.ui.theme.GradientSkyStart
+import androidx.compose.ui.platform.LocalContext
 
 @Composable
 fun UltraFocusApp(
@@ -34,6 +36,7 @@ fun UltraFocusApp(
     val permissionState = lockViewModel.permissionState.collectAsStateWithLifecycle()
     val currentBackStackEntry = navController.currentBackStackEntryAsState().value
     val currentRoute = currentBackStackEntry?.destination?.route
+    val context = LocalContext.current
     val startDestination = if (permissionState.value.allGranted) {
         AppDestination.Lock.route
     } else {
@@ -44,32 +47,40 @@ fun UltraFocusApp(
         lockViewModel.refreshPermissions()
     }
 
-    LaunchedEffect(permissionState.value.allGranted, currentRoute) {
+    LaunchedEffect(permissionState.value.allGranted, currentRoute, requestedNavRoute) {
+        val emergencyRequested = requestedNavRoute == AppDestination.EmergencyUnlock.route
+        if (emergencyRequested) {
+            return@LaunchedEffect
+        }
         val target = determinePermissionDestination(currentRoute, permissionState.value.allGranted)
         if (target != null) {
             navController.navigateAndSetAsRoot(target)
         }
     }
 
-    LaunchedEffect(currentRoute, requestedNavRoute, permissionState.value.allGranted) {
-        if (!permissionState.value.allGranted) {
-            if (requestedNavRoute != null) {
-                onRequestedNavRouteConsumed()
-            }
-            EmergencyUnlockState.setActive(false)
-            return@LaunchedEffect
-        }
+    LaunchedEffect(currentRoute, requestedNavRoute) {
         val emergencyRequested = requestedNavRoute == AppDestination.EmergencyUnlock.route
         val emergencyVisible = currentRoute == AppDestination.EmergencyUnlock.route
-        EmergencyUnlockState.setActive(emergencyVisible || emergencyRequested)
+        val active = emergencyVisible || emergencyRequested
+        EmergencyUnlockState.setActive(active)
+        EmergencyUnlockStateStore.setActive(context, active)
     }
 
-    LaunchedEffect(requestedNavRoute, permissionState.value.allGranted) {
+    LaunchedEffect(currentRoute, requestedNavRoute, permissionState.value.allGranted) {
         val targetRoute = requestedNavRoute
-        if (targetRoute != null && permissionState.value.allGranted) {
+        if (targetRoute != null &&
+            (permissionState.value.allGranted || targetRoute == AppDestination.EmergencyUnlock.route) &&
+            currentRoute != targetRoute
+        ) {
             navController.navigate(targetRoute) {
                 launchSingleTop = true
             }
+        }
+    }
+
+    LaunchedEffect(currentRoute, requestedNavRoute) {
+        val targetRoute = requestedNavRoute
+        if (targetRoute != null && currentRoute == targetRoute) {
             onRequestedNavRouteConsumed()
         }
     }

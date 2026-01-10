@@ -7,6 +7,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import jp.kawai.ultrafocus.data.datastore.DataStoreManager
 import jp.kawai.ultrafocus.emergency.EMERGENCY_UNLOCK_DECLARATION_V1
+import jp.kawai.ultrafocus.emergency.EmergencyUnlockStateStore
 import jp.kawai.ultrafocus.service.LockMonitorService
 import jp.kawai.ultrafocus.service.OverlayLockService
 import jp.kawai.ultrafocus.service.WatchdogScheduler
@@ -51,6 +52,7 @@ class EmergencyUnlockViewModel @Inject constructor(
     fun requestUnlock() {
         if (!_uiState.value.isMatched) return
         viewModelScope.launch {
+            EmergencyUnlockStateStore.setActive(appContext, false)
             dataStoreManager.updateLockState(false, null, null)
             OverlayLockService.stop(appContext)
             LockMonitorService.stop(appContext)
