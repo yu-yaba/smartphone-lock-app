@@ -26,6 +26,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -39,8 +40,11 @@ import jp.kawai.ultrafocus.BuildConfig
 import jp.kawai.ultrafocus.MainActivity
 import jp.kawai.ultrafocus.R
 import jp.kawai.ultrafocus.data.repository.SettingsPackages
+import jp.kawai.ultrafocus.data.repository.LockRepository
 import jp.kawai.ultrafocus.emergency.EmergencyUnlockState
+import jp.kawai.ultrafocus.emergency.EmergencyUnlockStateStore
 import jp.kawai.ultrafocus.navigation.AppDestination
+import jp.kawai.ultrafocus.util.AllowedAppResolver
 import jp.kawai.ultrafocus.data.datastore.DataStoreManager
 import jp.kawai.ultrafocus.data.datastore.LockStatePreferences
 import jp.kawai.ultrafocus.util.formatLockRemainingTime
@@ -66,15 +70,21 @@ class OverlayLockService : Service() {
     @Inject
     lateinit var foregroundEventSource: ForegroundAppEventSource
 
+    @Inject
+    lateinit var lockRepository: LockRepository
+
+
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var windowManager: WindowManager
     private var overlayContainer: FrameLayout? = null
+    private var overlayLayoutParams: WindowManager.LayoutParams? = null
     private var contentContainer: LinearLayout? = null
     private var countdownTextView: TextView? = null
     private var titleTextView: TextView? = null
     private var messageTextView: TextView? = null
     private var emergencyButton: Button? = null
     private var permissionButton: Button? = null
+    private var allowedAppsRow: LinearLayout? = null
     private var lockStateJob: Job? = null
     private var deviceProtectedLockStateJob: Job? = null
     private var countdownJob: Job? = null
@@ -88,6 +98,8 @@ class OverlayLockService : Service() {
     private var permissionRecoveryFallbackJob: Job? = null
     private var permissionRecoveryInProgress: Boolean = false
     private var settingsInForeground: Boolean = false
+    private var allowedAppSuppressed: Boolean = false
+    private var allowedAppSuppressedAtElapsed: Long = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -114,6 +126,16 @@ class OverlayLockService : Service() {
 
         when (intent?.action) {
             ACTION_START, null -> startLockDisplay()
+            ACTION_SUPPRESS_ALLOWED_APP -> {
+                allowedAppSuppressed = true
+                allowedAppSuppressedAtElapsed = SystemClock.elapsedRealtime()
+                startLockDisplay()
+                applyAllowedAppSuppression(true)
+            }
+            ACTION_RELEASE_ALLOWED_APP -> {
+                startLockDisplay()
+                applyAllowedAppSuppression(false)
+            }
             else -> Log.w(TAG, "Unknown action received: ${intent?.action}")
         }
         return START_STICKY
@@ -156,6 +178,7 @@ class OverlayLockService : Service() {
         userUnlockWatcherJob?.cancel()
         userUnlockWatcherJob = null
         endPermissionRecovery()
+        allowedAppSuppressed = false
         latestLockState = null
         hideOverlay()
         releaseWakeLock()
@@ -275,12 +298,24 @@ class OverlayLockService : Service() {
 
     private fun updateCountdown(remainingMillis: Long) {
         val mode = resolveOverlayMode()
-        if (permissionRecoveryInProgress && mode == OverlayMode.LOCK) {
-            endPermissionRecovery()
-            showOverlayIfNeeded()
+        if (allowedAppSuppressed) {
+            if (!AllowedAppLaunchStore.isSessionActive(this) && isAllowedAppSuppressionStale()) {
+                allowedAppSuppressed = false
+                allowedAppSuppressedAtElapsed = 0L
+                applyOverlaySuppressionState(suppressed = false)
+            } else {
+                applyOverlaySuppressionState(suppressed = true)
+                return
+            }
         }
-        if (overlayContainer == null && shouldShowOverlay(mode)) {
-            showOverlayIfNeeded()
+        if (!allowedAppSuppressed) {
+            if (permissionRecoveryInProgress && mode == OverlayMode.LOCK) {
+                endPermissionRecovery()
+                showOverlayIfNeeded()
+            }
+            if (overlayContainer == null && shouldShowOverlay(mode)) {
+                showOverlayIfNeeded()
+            }
         }
         updateOverlayModeIfNeeded(mode)
         if (mode == OverlayMode.PERMISSION_RECOVERY) {
@@ -300,7 +335,8 @@ class OverlayLockService : Service() {
 
     private fun launchEmergencyUnlock() {
         EmergencyUnlockState.setActive(true)
-        stopLockDisplay(clearState = false)
+        EmergencyUnlockStateStore.setActive(this, true)
+        stopLockDisplay(clearState = true)
         val intent = Intent(this, MainActivity::class.java).apply {
             putExtra(MainActivity.EXTRA_NAV_ROUTE, AppDestination.EmergencyUnlock.route)
             addFlags(
@@ -314,6 +350,7 @@ class OverlayLockService : Service() {
         runCatching { startActivity(intent) }
             .onFailure { throwable ->
                 EmergencyUnlockState.setActive(false)
+                EmergencyUnlockStateStore.setActive(this, false)
                 Log.w(TAG, "Failed to launch emergency unlock", throwable)
                 start(this, reason = "emergency_unlock_failed", bypassDebounce = true)
             }
@@ -457,6 +494,44 @@ class OverlayLockService : Service() {
             }
         )
 
+        val shortcutsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        val phoneShortcut = buildAllowedAppShortcut(
+            label = getString(R.string.lock_overlay_shortcut_phone),
+            iconRes = android.R.drawable.ic_menu_call
+        ) { launchDialer() }
+        val smsShortcut = buildAllowedAppShortcut(
+            label = getString(R.string.lock_overlay_shortcut_sms),
+            iconRes = android.R.drawable.ic_menu_send
+        ) { launchSms() }
+        shortcutsRow.addView(
+            phoneShortcut,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        shortcutsRow.addView(
+            smsShortcut,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                leftMargin = dpToPx(20f, metrics)
+            }
+        )
+        content.addView(
+            shortcutsRow,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dpToPx(12f, metrics)
+            }
+        )
+
         if (BuildConfig.DEBUG) {
             val debugButton = Button(this).apply {
                 text = getString(R.string.lock_screen_dev_force_unlock)
@@ -500,14 +575,26 @@ class OverlayLockService : Service() {
             }
         )
         overlayContainer = container
+        overlayLayoutParams = layoutParams
         contentContainer = content
         countdownTextView = textView
         titleTextView = titleView
         messageTextView = messageView
         emergencyButton = emergencyButtonView
         permissionButton = permissionButtonView
+        allowedAppsRow = shortcutsRow
         applyOverlayMode(overlayMode)
+        if (allowedAppSuppressed) {
+            val touchableFlag = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            layoutParams.flags = layoutParams.flags or touchableFlag
+            container.alpha = 0f
+            container.isClickable = false
+            container.isFocusable = false
+        }
         windowManager.addView(container, layoutParams)
+        if (allowedAppSuppressed) {
+            applyOverlaySuppressionState(suppressed = true)
+        }
     }
 
     private fun hideOverlay() {
@@ -516,11 +603,13 @@ class OverlayLockService : Service() {
         messageTextView = null
         emergencyButton = null
         permissionButton = null
+        allowedAppsRow = null
         contentContainer = null
         overlayContainer?.let { view ->
             runCatching { windowManager.removeView(view) }
         }
         overlayContainer = null
+        overlayLayoutParams = null
     }
 
     private fun resolveOverlayMode(): OverlayMode {
@@ -545,6 +634,7 @@ class OverlayLockService : Service() {
                 countdownTextView?.visibility = View.VISIBLE
                 emergencyButton?.visibility = View.VISIBLE
                 permissionButton?.visibility = View.GONE
+                allowedAppsRow?.visibility = View.VISIBLE
                 updateOverlayBackground(lockMode = true)
             }
 
@@ -555,9 +645,57 @@ class OverlayLockService : Service() {
                 countdownTextView?.visibility = View.GONE
                 emergencyButton?.visibility = View.GONE
                 permissionButton?.visibility = View.VISIBLE
+                allowedAppsRow?.visibility = View.GONE
                 updateOverlayBackground(lockMode = false)
             }
         }
+    }
+
+    private fun applyAllowedAppSuppression(suppressed: Boolean) {
+        if (suppressed) {
+            allowedAppSuppressedAtElapsed = SystemClock.elapsedRealtime()
+            allowedAppSuppressed = true
+            applyOverlaySuppressionState(suppressed = true)
+            return
+        }
+        if (allowedAppSuppressed == suppressed) {
+            allowedAppSuppressedAtElapsed = 0L
+            return
+        }
+        allowedAppSuppressed = false
+        allowedAppSuppressedAtElapsed = 0L
+        val mode = resolveOverlayMode()
+        if (shouldShowOverlay(mode)) {
+            showOverlayIfNeeded()
+        }
+        applyOverlaySuppressionState(suppressed = false)
+        updateOverlayModeIfNeeded(mode)
+    }
+
+    private fun isAllowedAppSuppressionStale(): Boolean {
+        if (!allowedAppSuppressed) return false
+        val lastSignal = allowedAppSuppressedAtElapsed
+        if (lastSignal == 0L) return true
+        val age = SystemClock.elapsedRealtime() - lastSignal
+        return age > ALLOWED_APP_SUPPRESSION_TIMEOUT_MILLIS
+    }
+
+    private fun applyOverlaySuppressionState(suppressed: Boolean) {
+        val container = overlayContainer ?: return
+        val params = overlayLayoutParams ?: return
+        val touchableFlag = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        if (suppressed) {
+            params.flags = params.flags or touchableFlag
+            container.alpha = 0f
+            container.isClickable = false
+            container.isFocusable = false
+        } else {
+            params.flags = params.flags and touchableFlag.inv()
+            container.alpha = 1f
+            container.isClickable = true
+            container.isFocusable = true
+        }
+        runCatching { windowManager.updateViewLayout(container, params) }
     }
 
     private fun launchNotificationPermissionSettings() {
@@ -568,6 +706,115 @@ class OverlayLockService : Service() {
         }
         runCatching { startActivity(intent) }
             .onFailure { throwable -> Log.w(TAG, "Failed to open app settings", throwable) }
+    }
+
+    private fun buildAllowedAppShortcut(
+        label: String,
+        iconRes: Int,
+        onClick: () -> Unit
+    ): LinearLayout {
+        val metrics = resources.displayMetrics
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { onClick() }
+        }
+        val iconContainer = FrameLayout(this).apply {
+            background = buildShortcutBackground(metrics)
+        }
+        val iconSize = dpToPx(22f, metrics)
+        val iconView = ImageView(this).apply {
+            setImageResource(iconRes)
+            setColorFilter(COLOR_TEXT_DARK_NAVY)
+            contentDescription = label
+        }
+        iconContainer.addView(
+            iconView,
+            FrameLayout.LayoutParams(iconSize, iconSize, Gravity.CENTER)
+        )
+        container.addView(
+            iconContainer,
+            LinearLayout.LayoutParams(
+                dpToPx(52f, metrics),
+                dpToPx(52f, metrics)
+            )
+        )
+        val labelView = TextView(this).apply {
+            text = label
+            setTextColor(COLOR_TEXT_DARK_NAVY)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            gravity = Gravity.CENTER
+            setIncludeFontPadding(false)
+        }
+        container.addView(
+            labelView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dpToPx(6f, metrics)
+            }
+        )
+        return container
+    }
+
+    private fun buildShortcutBackground(metrics: DisplayMetrics): android.graphics.drawable.GradientDrawable {
+        return android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = dpToPx(16f, metrics).toFloat()
+            setColor(COLOR_CLEAN_WHITE)
+        }
+    }
+
+    private fun launchDialer() {
+        if (!isLockActive() || EmergencyUnlockState.isActive()) return
+        lockRepository.refreshDynamicLists()
+        applyAllowedAppSuppression(true)
+        AllowedAppLaunchStore.startLaunch(this)
+        AllowedAppLaunchStore.startSession(this)
+        val targetPackage = AllowedAppResolver.resolveDialerPackage(
+            this,
+            lockRepository.allowedAppTargets().dialerPackage
+        )
+        if (targetPackage.isNullOrBlank()) {
+            AllowedAppLaunchStore.clear(this)
+            applyAllowedAppSuppression(false)
+            Log.w(TAG, "No default dialer resolved; skip launch")
+            return
+        }
+        AllowedAppLaunchStore.setAllowed(this, targetPackage)
+        runCatching { AllowedAppLauncherActivity.start(this, AllowedAppLauncherActivity.Target.DIALER, targetPackage) }
+            .onFailure { throwable ->
+            applyAllowedAppSuppression(false)
+            AllowedAppLaunchStore.clearSession(this)
+            Log.w(TAG, "Failed to open dialer", throwable)
+        }
+    }
+
+    private fun launchSms() {
+        if (!isLockActive() || EmergencyUnlockState.isActive()) return
+        lockRepository.refreshDynamicLists()
+        applyAllowedAppSuppression(true)
+        AllowedAppLaunchStore.startLaunch(this)
+        AllowedAppLaunchStore.startSession(this)
+        val targetPackage = AllowedAppResolver.resolveSmsPackage(
+            this,
+            lockRepository.allowedAppTargets().smsPackage
+        )
+        if (targetPackage.isNullOrBlank()) {
+            AllowedAppLaunchStore.clear(this)
+            applyAllowedAppSuppression(false)
+            Log.w(TAG, "No default sms app resolved; skip launch")
+            return
+        }
+        AllowedAppLaunchStore.setAllowed(this, targetPackage)
+        runCatching { AllowedAppLauncherActivity.start(this, AllowedAppLauncherActivity.Target.SMS, targetPackage) }
+            .onFailure { throwable ->
+            applyAllowedAppSuppression(false)
+            AllowedAppLaunchStore.clearSession(this)
+            Log.w(TAG, "Failed to open sms", throwable)
+        }
     }
 
     private fun updateOverlayBackground(lockMode: Boolean) {
@@ -596,6 +843,7 @@ class OverlayLockService : Service() {
 
     private fun shouldShowOverlay(mode: OverlayMode): Boolean {
         if (overlayContainer != null) return false
+        if (allowedAppSuppressed) return false
         if (permissionRecoveryInProgress && settingsInForeground && mode == OverlayMode.PERMISSION_RECOVERY) {
             return false
         }
@@ -866,6 +1114,7 @@ class OverlayLockService : Service() {
         private const val PERMISSION_RECOVERY_POLL_INTERVAL_MILLIS = 750L
         private const val PERMISSION_RECOVERY_FALLBACK_HIDE_MILLIS = 8_000L
         private const val SETTINGS_STICKY_MILLIS = 1_500L
+        private const val ALLOWED_APP_SUPPRESSION_TIMEOUT_MILLIS = 2_500L
         private const val EXTRA_START_REASON = "extra_start_reason"
         private const val EXTRA_REQUESTED_AT = "extra_requested_at"
         private const val EXTRA_DEBOUNCE_HANDLED = "extra_debounce_handled"
@@ -884,6 +1133,8 @@ class OverlayLockService : Service() {
         private val COLOR_CLEAN_WHITE = Color.WHITE
 
         const val ACTION_START = "jp.kawai.ultrafocus.action.START_LOCK"
+        private const val ACTION_SUPPRESS_ALLOWED_APP = "jp.kawai.ultrafocus.action.SUPPRESS_ALLOWED_APP"
+        private const val ACTION_RELEASE_ALLOWED_APP = "jp.kawai.ultrafocus.action.RELEASE_ALLOWED_APP"
 
         fun start(
             context: Context,
@@ -892,7 +1143,7 @@ class OverlayLockService : Service() {
             forceShow: Boolean = false
         ) {
             if (shouldDebounce(reason, bypassDebounce)) return
-            if (EmergencyUnlockState.isActive()) {
+            if (EmergencyUnlockState.isActive() || EmergencyUnlockStateStore.isActive(context)) {
                 Log.d(TAG, "Skip overlay start; emergency unlock active (reason=$reason)")
                 return
             }
@@ -917,6 +1168,34 @@ class OverlayLockService : Service() {
                     appContext.startService(intent)
                 }.onFailure { throwable ->
                     Log.e(TAG, "Unable to start overlay service in background", throwable)
+                }
+            }
+        }
+
+        fun setAllowedAppSuppressed(context: Context, suppressed: Boolean, reason: String = "allowed_app") {
+            if (EmergencyUnlockState.isActive() || EmergencyUnlockStateStore.isActive(context)) {
+                Log.d(TAG, "Skip allowed app suppression; emergency unlock active (reason=$reason)")
+                return
+            }
+            val appContext = context.applicationContext
+            val intent = Intent(appContext, OverlayLockService::class.java).apply {
+                action = if (suppressed) ACTION_SUPPRESS_ALLOWED_APP else ACTION_RELEASE_ALLOWED_APP
+                putExtra(EXTRA_START_REASON, reason)
+                putExtra(EXTRA_REQUESTED_AT, System.currentTimeMillis())
+                putExtra(EXTRA_DEBOUNCE_HANDLED, true)
+            }
+            val canStartForeground =
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    hasPostNotificationPermission(appContext)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && canStartForeground) {
+                runCatching { ContextCompat.startForegroundService(appContext, intent) }
+                    .onFailure { Log.e(TAG, "Unable to update overlay suppression", it) }
+            } else {
+                runCatching {
+                    @Suppress("DEPRECATION")
+                    appContext.startService(intent)
+                }.onFailure { throwable ->
+                    Log.e(TAG, "Unable to update overlay suppression in background", throwable)
                 }
             }
         }

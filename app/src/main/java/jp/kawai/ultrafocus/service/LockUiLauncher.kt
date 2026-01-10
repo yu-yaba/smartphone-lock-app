@@ -6,6 +6,7 @@ import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import jp.kawai.ultrafocus.MainActivity
 import jp.kawai.ultrafocus.emergency.EmergencyUnlockState
+import jp.kawai.ultrafocus.emergency.EmergencyUnlockStateStore
 import jp.kawai.ultrafocus.navigation.AppDestination
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -18,13 +19,23 @@ class LockUiLauncher @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
 
-    fun bringToFront() {
-        if (EmergencyUnlockState.isActive()) {
+    fun bringToFront(triggerPackage: String? = null, triggerReason: String? = null) {
+        if (AllowedAppLaunchStore.isLaunchInProgress(context) || AllowedAppLaunchStore.isSessionActive(context)) {
+            Log.d(TAG, "Skip bringToFront; allowed app session active")
+            return
+        }
+        if (EmergencyUnlockState.isActive() || EmergencyUnlockStateStore.isActive(context)) {
             Log.d(TAG, "Emergency unlock active; bring emergency screen to front")
             bringEmergencyUnlockToFront()
             return
         }
         val intent = Intent(context, LockRedirectActivity::class.java).apply {
+            if (!triggerPackage.isNullOrBlank()) {
+                putExtra(LockRedirectActivity.EXTRA_TRIGGER_PACKAGE, triggerPackage)
+            }
+            if (!triggerReason.isNullOrBlank()) {
+                putExtra(LockRedirectActivity.EXTRA_TRIGGER_REASON, triggerReason)
+            }
             addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_CLEAR_TOP or
