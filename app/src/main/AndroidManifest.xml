@@ -2,6 +2,21 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.APP_MESSAGING" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
+    </queries>
+
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
@@ -40,6 +55,14 @@
             android:name=".service.LockRedirectActivity"
             android:exported="false"
             android:theme="@style/Theme.UltraFocus.Redirect"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:taskAffinity="jp.kawai.ultrafocus.lock" />
+
+        <activity
+            android:name=".service.AllowedAppLauncherActivity"
+            android:exported="false"
+            android:theme="@style/Theme.UltraFocus.Transparent"
             android:excludeFromRecents="true"
             android:launchMode="singleTask"
             android:taskAffinity="jp.kawai.ultrafocus.lock" />
