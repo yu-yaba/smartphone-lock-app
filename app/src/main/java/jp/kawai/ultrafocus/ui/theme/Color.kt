@@ -2,28 +2,28 @@ package jp.kawai.ultrafocus.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Core brand palette (Sky theme)
-val PrimarySky = Color(0xFF0A84FF)
-val PrimarySkyLight = Color(0xFF6FB6FF)
-val BackgroundSky = Color(0xFFF7FAFF)
-val SurfaceBase = Color(0xFFFFFFFF)
+// Core palette (3 colors + alpha variants)
+val PrimaryBlue = Color(0xFF0516FF)
+val NeutralWhite = Color(0xFFFFFFFF)
+val NeutralBlack = Color(0xFF000000)
 
-// Text / Support
-val TextPrimary = Color(0xFF0B1A2D)
-val TextSecondary = Color(0xFF8291A8)
-val TextOnPrimary = Color(0xFFFFFFFF)
+// Derived tones (alpha only)
+val PrimaryBlueMuted = PrimaryBlue.copy(alpha = 0.6f)
+val TextBlackMuted = NeutralBlack.copy(alpha = 0.6f)
+val OutlineBlack = NeutralBlack.copy(alpha = 0.12f)
+val ScrimBlack = NeutralBlack.copy(alpha = 0.45f)
 
-// States
-val SuccessGreen = Color(0xFF30D158)
-val WarningRed = Color(0xFFFF3B30)
+// Surfaces / Text
+val BackgroundWhite = NeutralWhite
+val SurfaceWhite = NeutralWhite
+val TextBlack = NeutralBlack
+val TextOnPrimary = NeutralWhite
 
 // Effects
-val OutlineHairline = Color(0xFFE3EAF5)
-val ScrimDark = Color(0x730B1A2D) // 45% opacity
-val GlassSurface = Color(0xC0FFFFFF) // translucent base
-val GlassSurfaceTint = Color(0x260A84FF) // subtle blue tint
-val GlassBorder = Color(0x55FFFFFF)
+val GlassSurface = NeutralWhite.copy(alpha = 0.92f)
+val GlassSurfaceTint = PrimaryBlue.copy(alpha = 0.12f)
+val GlassBorder = NeutralWhite.copy(alpha = 0.55f)
 
 // Gradients
-val GradientSkyStart = Color(0xFFE6F2FF)
-val GradientSkyEnd = PrimarySky
+val GradientPrimaryStart = PrimaryBlue.copy(alpha = 0.12f)
+val GradientPrimaryEnd = PrimaryBlue
