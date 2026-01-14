@@ -13,19 +13,42 @@ import androidx.core.view.WindowCompat
 import androidx.compose.ui.unit.dp
 
 private val LockColorScheme = lightColorScheme(
-    primary = PrimarySky,
+    primary = PrimaryBlue,
     onPrimary = TextOnPrimary,
-    secondary = PrimarySkyLight,
+    primaryContainer = PrimaryBlue.copy(alpha = 0.12f),
+    onPrimaryContainer = TextBlack,
+    inversePrimary = PrimaryBlue,
+    secondary = PrimaryBlue,
     onSecondary = TextOnPrimary,
-    background = BackgroundSky,
-    onBackground = TextPrimary,
-    surface = SurfaceBase,
-    onSurface = TextPrimary,
-    surfaceVariant = SurfaceBase,
-    onSurfaceVariant = TextSecondary,
-    outline = OutlineHairline,
-    error = WarningRed,
-    onError = TextOnPrimary
+    secondaryContainer = PrimaryBlue.copy(alpha = 0.12f),
+    onSecondaryContainer = TextBlack,
+    tertiary = PrimaryBlue,
+    onTertiary = TextOnPrimary,
+    tertiaryContainer = PrimaryBlue.copy(alpha = 0.12f),
+    onTertiaryContainer = TextBlack,
+    background = BackgroundWhite,
+    onBackground = TextBlack,
+    surface = SurfaceWhite,
+    onSurface = TextBlack,
+    surfaceVariant = SurfaceWhite,
+    onSurfaceVariant = TextBlackMuted,
+    surfaceTint = PrimaryBlue,
+    inverseSurface = TextBlack,
+    inverseOnSurface = TextOnPrimary,
+    outline = OutlineBlack,
+    outlineVariant = OutlineBlack.copy(alpha = 0.24f),
+    error = PrimaryBlue,
+    onError = TextOnPrimary,
+    errorContainer = PrimaryBlue.copy(alpha = 0.12f),
+    onErrorContainer = TextBlack,
+    scrim = ScrimBlack,
+    surfaceBright = SurfaceWhite,
+    surfaceContainer = SurfaceWhite,
+    surfaceContainerHigh = SurfaceWhite,
+    surfaceContainerHighest = SurfaceWhite,
+    surfaceContainerLow = SurfaceWhite,
+    surfaceContainerLowest = SurfaceWhite,
+    surfaceDim = SurfaceWhite
 )
 
 private val LockShapes = Shapes(
@@ -42,7 +65,10 @@ fun UltraFocusTheme(content: @Composable () -> Unit) {
     if (!view.isInEditMode) {
         val window = (view.context as Activity).window
         window.statusBarColor = Color.Transparent.toArgb()
+        window.navigationBarColor = Color.Transparent.toArgb()
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = true
+        WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = true
     }
 
     CompositionLocalProvider(
