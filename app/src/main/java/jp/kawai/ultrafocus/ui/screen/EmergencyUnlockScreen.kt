@@ -16,10 +16,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -47,7 +50,6 @@ import jp.kawai.ultrafocus.emergency.EMERGENCY_UNLOCK_DECLARATION_V1
 import jp.kawai.ultrafocus.emergency.EmergencyUnlockStateStore
 import jp.kawai.ultrafocus.ui.emergency.EmergencyUnlockViewModel
 import jp.kawai.ultrafocus.ui.emergency.NoPasteEditText
-import jp.kawai.ultrafocus.ui.theme.gradients
 import jp.kawai.ultrafocus.ui.theme.glass
 import jp.kawai.ultrafocus.ui.theme.radius
 import jp.kawai.ultrafocus.ui.theme.spacing
@@ -121,8 +123,10 @@ private fun EmergencyUnlockContent(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.gradients.skyDawn)
-            .padding(horizontal = spacing.xl, vertical = spacing.xxl),
+            .background(MaterialTheme.colorScheme.background)
+            .windowInsetsPadding(WindowInsets.systemBars)
+            .imePadding()
+            .padding(horizontal = spacing.lg, vertical = spacing.xxl),
         verticalArrangement = Arrangement.spacedBy(spacing.lg)
     ) {
         Text(
@@ -231,14 +235,28 @@ private fun EmergencyUnlockContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (mismatchIndex != null) {
-                    Text(
-                        text = stringResource(
-                            id = R.string.emergency_unlock_mismatch_index,
-                            mismatchIndex + 1
-                        ),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.error
-                    )
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(MaterialTheme.radius.s)
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.24f),
+                                shape = RoundedCornerShape(MaterialTheme.radius.s)
+                            )
+                            .padding(horizontal = spacing.sm, vertical = spacing.xs)
+                    ) {
+                        Text(
+                            text = "!" + stringResource(
+                                id = R.string.emergency_unlock_mismatch_index,
+                                mismatchIndex + 1
+                            ),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
             }
             if (!isMatched) {

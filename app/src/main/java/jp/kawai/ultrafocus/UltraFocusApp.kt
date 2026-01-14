@@ -7,7 +7,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
@@ -21,8 +20,6 @@ import jp.kawai.ultrafocus.ui.lock.LockScreenViewModel
 import jp.kawai.ultrafocus.ui.screen.EmergencyUnlockScreen
 import jp.kawai.ultrafocus.ui.screen.LockScreen
 import jp.kawai.ultrafocus.ui.screen.PermissionIntroScreen
-import jp.kawai.ultrafocus.ui.theme.GradientSkyEnd
-import jp.kawai.ultrafocus.ui.theme.GradientSkyStart
 import androidx.compose.ui.platform.LocalContext
 
 @Composable
@@ -88,14 +85,7 @@ fun UltraFocusApp(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        GradientSkyEnd,
-                        GradientSkyStart
-                    )
-                )
-            )
+            .background(MaterialTheme.colorScheme.background)
     ) {
         NavHost(
             navController = navController,
