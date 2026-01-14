@@ -381,24 +381,24 @@ class OverlayLockService : Service() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(
-                dpToPx(12f, metrics),
-                dpToPx(12f, metrics),
-                dpToPx(12f, metrics),
-                dpToPx(12f, metrics)
+                dpToPx(32f, metrics),
+                dpToPx(48f, metrics),
+                dpToPx(32f, metrics),
+                dpToPx(48f, metrics)
             )
         }
 
         val titleView = TextView(this).apply {
             text = getString(R.string.overlay_lock_panel_title)
-            setTextColor(COLOR_TEXT_DARK_NAVY)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            setTextColor(COLOR_TEXT_MUTED)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             gravity = Gravity.CENTER
             setIncludeFontPadding(false)
         }
 
         val messageView = TextView(this).apply {
-            setTextColor(COLOR_TEXT_SECONDARY)
+            setTextColor(COLOR_TEXT_MUTED)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             typeface = Typeface.create("sans-serif", Typeface.NORMAL)
             gravity = Gravity.CENTER
@@ -407,9 +407,9 @@ class OverlayLockService : Service() {
         }
 
         val textView = TextView(this).apply {
-            setTextColor(COLOR_TEXT_DARK_NAVY)
+            setTextColor(COLOR_TEXT_PRIMARY)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 32f)
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
             setFontFeatureSettings("tnum")
             gravity = Gravity.CENTER
             setIncludeFontPadding(false)
@@ -429,7 +429,7 @@ class OverlayLockService : Service() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
                 topMargin = dpToPx(6f, metrics)
-                bottomMargin = dpToPx(6f, metrics)
+                bottomMargin = dpToPx(32f, metrics)
             }
         )
         content.addView(
@@ -438,8 +438,8 @@ class OverlayLockService : Service() {
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                topMargin = dpToPx(8f, metrics)
-                bottomMargin = dpToPx(8f, metrics)
+                topMargin = dpToPx(16f, metrics)
+                bottomMargin = dpToPx(32f, metrics)
             }
         )
 
@@ -447,14 +447,16 @@ class OverlayLockService : Service() {
             text = getString(R.string.overlay_lock_emergency_unlock)
             setTextColor(COLOR_CLEAN_WHITE)
             background = android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = dpToPx(14f, metrics).toFloat()
-                setColor(COLOR_TEXT_DARK_NAVY)
+                cornerRadius = dpToPx(100f, metrics).toFloat()
+                setColor(COLOR_ACCENT)
             }
+            elevation = dpToPx(6f, metrics).toFloat()
+            minimumHeight = dpToPx(48f, metrics)
             setPadding(
-                dpToPx(16f, metrics),
-                dpToPx(10f, metrics),
-                dpToPx(16f, metrics),
-                dpToPx(10f, metrics)
+                dpToPx(32f, metrics),
+                dpToPx(14f, metrics),
+                dpToPx(32f, metrics),
+                dpToPx(14f, metrics)
             )
             setOnClickListener { launchEmergencyUnlock() }
         }
@@ -472,14 +474,16 @@ class OverlayLockService : Service() {
             text = getString(R.string.overlay_lock_permission_button)
             setTextColor(COLOR_CLEAN_WHITE)
             background = android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = dpToPx(14f, metrics).toFloat()
-                setColor(COLOR_TEXT_DARK_NAVY)
+                cornerRadius = dpToPx(100f, metrics).toFloat()
+                setColor(COLOR_ACCENT)
             }
+            elevation = dpToPx(6f, metrics).toFloat()
+            minimumHeight = dpToPx(48f, metrics)
             setPadding(
-                dpToPx(16f, metrics),
-                dpToPx(10f, metrics),
-                dpToPx(16f, metrics),
-                dpToPx(10f, metrics)
+                dpToPx(32f, metrics),
+                dpToPx(14f, metrics),
+                dpToPx(32f, metrics),
+                dpToPx(14f, metrics)
             )
             setOnClickListener { launchNotificationPermissionSettings() }
             visibility = View.GONE
@@ -528,7 +532,7 @@ class OverlayLockService : Service() {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
-                topMargin = dpToPx(12f, metrics)
+                topMargin = dpToPx(24f, metrics)
             }
         )
 
@@ -537,9 +541,10 @@ class OverlayLockService : Service() {
                 text = getString(R.string.lock_screen_dev_force_unlock)
                 setTextColor(COLOR_CLEAN_WHITE)
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    cornerRadius = dpToPx(12f, metrics).toFloat()
-                    setColor(COLOR_WARNING_RED)
+                    cornerRadius = dpToPx(100f, metrics).toFloat()
+                    setColor(COLOR_ACCENT)
                 }
+                minimumHeight = dpToPx(48f, metrics)
                 setPadding(
                     dpToPx(12f, metrics),
                     dpToPx(10f, metrics),
@@ -727,7 +732,7 @@ class OverlayLockService : Service() {
         val iconSize = dpToPx(22f, metrics)
         val iconView = ImageView(this).apply {
             setImageResource(iconRes)
-            setColorFilter(COLOR_TEXT_DARK_NAVY)
+            setColorFilter(COLOR_TEXT_PRIMARY)
             contentDescription = label
         }
         iconContainer.addView(
@@ -743,7 +748,7 @@ class OverlayLockService : Service() {
         )
         val labelView = TextView(this).apply {
             text = label
-            setTextColor(COLOR_TEXT_DARK_NAVY)
+            setTextColor(COLOR_TEXT_PRIMARY)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             gravity = Gravity.CENTER
             setIncludeFontPadding(false)
@@ -762,7 +767,7 @@ class OverlayLockService : Service() {
 
     private fun buildShortcutBackground(metrics: DisplayMetrics): android.graphics.drawable.GradientDrawable {
         return android.graphics.drawable.GradientDrawable().apply {
-            cornerRadius = dpToPx(16f, metrics).toFloat()
+            shape = android.graphics.drawable.GradientDrawable.OVAL
             setColor(COLOR_CLEAN_WHITE)
         }
     }

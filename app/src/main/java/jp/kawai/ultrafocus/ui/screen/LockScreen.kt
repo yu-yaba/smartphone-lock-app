@@ -246,13 +246,36 @@ fun LockScreenContent(
                     )
                 }
                 AnimatedVisibility(visible = !permissionsGranted) {
-                    Text(
-                        text = stringResource(id = R.string.lock_screen_permissions_missing),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(top = spacing.md)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = spacing.md)
+                            .background(
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(MaterialTheme.radius.s)
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.24f),
+                                shape = RoundedCornerShape(MaterialTheme.radius.s)
+                            )
+                            .padding(horizontal = spacing.md, vertical = spacing.sm),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "!",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.width(spacing.sm))
+                        Text(
+                            text = stringResource(id = R.string.lock_screen_permissions_missing),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
 
