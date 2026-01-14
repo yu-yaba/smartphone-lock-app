@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -64,7 +66,6 @@ import jp.kawai.ultrafocus.ui.lock.LockScreenViewModel
 import jp.kawai.ultrafocus.ui.theme.UltraFocusTheme
 import jp.kawai.ultrafocus.ui.theme.elevations
 import jp.kawai.ultrafocus.ui.theme.glass
-import jp.kawai.ultrafocus.ui.theme.gradients
 import jp.kawai.ultrafocus.ui.theme.radius
 import jp.kawai.ultrafocus.ui.theme.spacing
 import jp.kawai.ultrafocus.util.formatLockRemainingTime
@@ -107,8 +108,9 @@ fun LockScreenContent(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.gradients.skyDawn)
-            .padding(horizontal = spacing.xl, vertical = spacing.xxl)
+            .background(MaterialTheme.colorScheme.background)
+            .windowInsetsPadding(WindowInsets.systemBars)
+            .padding(horizontal = spacing.lg, vertical = spacing.xxl)
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),
