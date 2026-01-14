@@ -369,7 +369,7 @@ private fun PermissionList(
 @Composable
 private fun PermissionCard(data: PermissionCardData) {
     val spacing = MaterialTheme.spacing
-    val statusColor = if (data.granted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+    val statusColor = if (data.granted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
     val badgeColor = statusColor.copy(alpha = 0.12f)
     val statusText = if (data.granted) {
         stringResource(id = R.string.permission_intro_status_granted)
@@ -427,7 +427,7 @@ private fun PermissionCard(data: PermissionCardData) {
                 enabled = !data.granted,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(46.dp),
+                    .height(48.dp),
                 shape = RoundedCornerShape(MaterialTheme.radius.s),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,

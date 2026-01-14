@@ -235,14 +235,28 @@ private fun EmergencyUnlockContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (mismatchIndex != null) {
-                    Text(
-                        text = stringResource(
-                            id = R.string.emergency_unlock_mismatch_index,
-                            mismatchIndex + 1
-                        ),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.error
-                    )
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(MaterialTheme.radius.s)
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.24f),
+                                shape = RoundedCornerShape(MaterialTheme.radius.s)
+                            )
+                            .padding(horizontal = spacing.sm, vertical = spacing.xs)
+                    ) {
+                        Text(
+                            text = "!" + stringResource(
+                                id = R.string.emergency_unlock_mismatch_index,
+                                mismatchIndex + 1
+                            ),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
             }
             if (!isMatched) {
