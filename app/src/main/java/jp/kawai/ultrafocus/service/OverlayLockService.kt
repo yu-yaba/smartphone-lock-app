@@ -1124,12 +1124,12 @@ class OverlayLockService : Service() {
         @Volatile
         private var lastStartElapsedRealtime: Long = 0L
 
-        // Sky Concept Colors (aligned with concept.md)
-        private val COLOR_GRADIENT_START = Color.parseColor("#E6F2FF")
-        private val COLOR_GRADIENT_END = Color.parseColor("#0A84FF")
-        private val COLOR_TEXT_DARK_NAVY = Color.parseColor("#0B1A2D")
-        private val COLOR_TEXT_SECONDARY = Color.parseColor("#8291A8")
-        private val COLOR_WARNING_RED = Color.parseColor("#FF3B30")
+        // 3-color palette (aligned with concept.md)
+        private val COLOR_GRADIENT_START = Color.WHITE
+        private val COLOR_GRADIENT_END = Color.WHITE
+        private val COLOR_TEXT_PRIMARY = Color.BLACK
+        private val COLOR_TEXT_MUTED = Color.parseColor("#99000000") // 60% alpha
+        private val COLOR_ACCENT = Color.parseColor("#0516FF")
         private val COLOR_CLEAN_WHITE = Color.WHITE
 
         const val ACTION_START = "jp.kawai.ultrafocus.action.START_LOCK"

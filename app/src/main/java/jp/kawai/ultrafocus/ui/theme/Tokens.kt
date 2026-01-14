@@ -42,7 +42,7 @@ data class Elevations(
 
 data class LockGradients(
     val skyDawn: Brush = Brush.verticalGradient(
-        colors = listOf(GradientSkyEnd, GradientSkyStart) // 上:青 → 下:白
+        colors = listOf(GradientPrimaryEnd, GradientPrimaryStart) // 上:青 → 下:淡い青
     )
 )
 
