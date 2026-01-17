@@ -32,7 +32,12 @@ object WatchdogWorkScheduler {
 
     fun cancel(context: Context) {
         Log.d(TAG, "Cancel WorkManager heartbeat")
-        WorkManager.getInstance(context.applicationContext).cancelUniqueWork(UNIQUE_WORK_NAME)
+        val appContext = context.applicationContext
+        runCatching {
+            WorkManager.getInstance(appContext).cancelUniqueWork(UNIQUE_WORK_NAME)
+        }.onFailure { throwable ->
+            Log.w(TAG, "Failed to cancel WorkManager heartbeat", throwable)
+        }
     }
 
     private fun Context.isUserUnlocked(): Boolean =
