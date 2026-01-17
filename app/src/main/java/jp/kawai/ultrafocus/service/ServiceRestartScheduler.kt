@@ -14,14 +14,29 @@ object ServiceRestartScheduler {
 
     private const val TAG = "ServiceRestartScheduler"
     private const val DEFAULT_DELAY_MILLIS = 1_000L
+    private const val MIN_SCHEDULE_INTERVAL_MILLIS = 10_000L
     internal const val EXTRA_START_REASON = "extra_start_reason"
     private const val DEFAULT_RESTART_REASON = "service_restart"
+    private val scheduleLock = Any()
+    private val lastScheduleByRequest = mutableMapOf<Int, Long>()
 
     fun schedule(context: Context, serviceClass: Class<out Service>, requestCode: Int) {
         val appContext = context.applicationContext
         val alarmManager = appContext.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
         if (alarmManager == null) {
             Log.w(TAG, "AlarmManager unavailable; cannot schedule restart for ${serviceClass.simpleName}")
+            return
+        }
+
+        val nowElapsed = SystemClock.elapsedRealtime()
+        val shouldSchedule = synchronized(scheduleLock) {
+            shouldScheduleLocked(requestCode, nowElapsed)
+        }
+        if (!shouldSchedule) {
+            Log.w(
+                TAG,
+                "Skip restart schedule (debounced) for ${serviceClass.simpleName} request=$requestCode"
+            )
             return
         }
 
@@ -67,4 +82,28 @@ object ServiceRestartScheduler {
     private fun immutableFlag(): Int {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
     }
+
+    private fun shouldScheduleLocked(requestCode: Int, nowElapsed: Long): Boolean {
+        val hasLast = lastScheduleByRequest.containsKey(requestCode)
+        val last = lastScheduleByRequest[requestCode] ?: 0L
+        if (hasLast && nowElapsed - last < MIN_SCHEDULE_INTERVAL_MILLIS) {
+            return false
+        }
+        lastScheduleByRequest[requestCode] = nowElapsed
+        return true
+    }
+
+    internal fun shouldScheduleForTest(requestCode: Int, nowElapsed: Long): Boolean {
+        return synchronized(scheduleLock) {
+            shouldScheduleLocked(requestCode, nowElapsed)
+        }
+    }
+
+    internal fun resetForTest() {
+        synchronized(scheduleLock) {
+            lastScheduleByRequest.clear()
+        }
+    }
+
+    internal fun minScheduleIntervalForTest(): Long = MIN_SCHEDULE_INTERVAL_MILLIS
 }
