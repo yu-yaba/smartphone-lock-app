@@ -29,43 +29,52 @@ class BootFastStartupReceiver : BroadcastReceiver() {
         if (action !in SUPPORTED_ACTIONS) return
 
         val pending = goAsync()
+        val runner = {
+            val appContext = context.applicationContext
+            val dpContext = appContext.createDeviceProtectedStorageContext()
+            val prefs = dpContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val isLocked = prefs.getBoolean(KEY_IS_LOCKED, false)
+            val hasEnd = prefs.contains(KEY_LOCK_END_TIMESTAMP)
+            val lockEnd = if (hasEnd) prefs.getLong(KEY_LOCK_END_TIMESTAMP, 0L) else null
+            val now = System.currentTimeMillis()
+
+            val retrying = action == ACTION_RETRY
+
+            if (isLocked && (lockEnd == null || lockEnd > now)) {
+                Log.i(TAG, "Fast boot start: locked state detected in DP store (retry=$retrying)")
+                LockMonitorService.start(appContext, reason = "boot_fast_receiver", bypassDebounce = true)
+                OverlayLockService.start(
+                    appContext,
+                    reason = "boot_fast_receiver",
+                    bypassDebounce = true,
+                    forceShow = true
+                )
+                // ウォッチドッグも即時復元（WorkManager は解錠後のみ）
+                WatchdogScheduler.scheduleHeartbeat(appContext, immediate = true)
+                WatchdogScheduler.scheduleLockExpiry(appContext, lockEnd)
+                if (appContext.isUserUnlocked()) {
+                    WatchdogWorkScheduler.schedule(appContext, delayMillis = 0L)
+                } else {
+                    Log.i(TAG, "Skip WorkManager schedule (user locked)")
+                    WatchdogWorkScheduler.cancel(appContext)
+                }
+                // 念のため複数回再試行（初期化競合や描画拒否対策）
+                if (!retrying) {
+                    scheduleRetries(appContext)
+                }
+            } else {
+                Log.i(TAG, "Fast boot start: no active lock state; skipping (retry=$retrying)")
+            }
+        }
+
+        if (pending == null) {
+            runner()
+            return
+        }
+
         CoroutineScope(Dispatchers.Default).launch {
             try {
-                val appContext = context.applicationContext
-                val dpContext = appContext.createDeviceProtectedStorageContext()
-                val prefs = dpContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                val isLocked = prefs.getBoolean(KEY_IS_LOCKED, false)
-                val hasEnd = prefs.contains(KEY_LOCK_END_TIMESTAMP)
-                val lockEnd = if (hasEnd) prefs.getLong(KEY_LOCK_END_TIMESTAMP, 0L) else null
-                val now = System.currentTimeMillis()
-
-                val retrying = action == ACTION_RETRY
-
-                if (isLocked && (lockEnd == null || lockEnd > now)) {
-                    Log.i(TAG, "Fast boot start: locked state detected in DP store (retry=$retrying)")
-                    LockMonitorService.start(appContext, reason = "boot_fast_receiver", bypassDebounce = true)
-                    OverlayLockService.start(
-                        appContext,
-                        reason = "boot_fast_receiver",
-                        bypassDebounce = true,
-                        forceShow = true
-                    )
-                    // ウォッチドッグも即時復元（WorkManager は解錠後のみ）
-                    WatchdogScheduler.scheduleHeartbeat(appContext, immediate = true)
-                    WatchdogScheduler.scheduleLockExpiry(appContext, lockEnd)
-                    if (appContext.isUserUnlocked()) {
-                        WatchdogWorkScheduler.schedule(appContext, delayMillis = 0L)
-                    } else {
-                        Log.i(TAG, "Skip WorkManager schedule (user locked)")
-                        WatchdogWorkScheduler.cancel(appContext)
-                    }
-                    // 念のため複数回再試行（初期化競合や描画拒否対策）
-                    if (!retrying) {
-                        scheduleRetries(appContext)
-                    }
-                } else {
-                    Log.i(TAG, "Fast boot start: no active lock state; skipping (retry=$retrying)")
-                }
+                runner()
             } finally {
                 pending.finish()
             }
@@ -92,7 +101,14 @@ class BootFastStartupReceiver : BroadcastReceiver() {
         val triggerAt = System.currentTimeMillis() + delayMillis
         runCatching {
             alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
-        }.onFailure { Log.w(TAG, "Failed to schedule boot fast retry", it) }
+        }.onFailure { throwable ->
+            Log.w(TAG, "Exact alarm retry failed; fallback to inexact", throwable)
+            runCatching {
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+            }.onFailure { fallbackError ->
+                Log.w(TAG, "Failed to schedule boot fast retry (inexact)", fallbackError)
+            }
+        }
     }
 
     internal companion object {

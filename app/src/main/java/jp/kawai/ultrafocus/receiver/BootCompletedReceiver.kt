@@ -128,7 +128,14 @@ class BootCompletedReceiver : BroadcastReceiver() {
         val triggerAt = System.currentTimeMillis() + RETRY_DELAY_MILLIS
         runCatching {
             alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
-        }.onFailure { Log.w(TAG, "Failed to schedule boot retry", it) }
+        }.onFailure { throwable ->
+            Log.w(TAG, "Exact alarm retry failed; fallback to inexact", throwable)
+            runCatching {
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+            }.onFailure { fallbackError ->
+                Log.w(TAG, "Failed to schedule boot retry (inexact)", fallbackError)
+            }
+        }
     }
 
     private fun restartLockServices(context: Context, reason: String) {
