@@ -60,6 +60,7 @@ class LockMonitorService : Service() {
     @Volatile
     private var isLocked: Boolean = false
     private var foregroundStarted = false
+    private var foregroundSuppressedUntilElapsed: Long = 0L
     private var forcedRedirectJob: Job? = null
     private val overlayThrottler = PackageEventThrottler(BLACKLIST_OVERLAY_DEBOUNCE_MILLIS)
     private val lockUiRedirectThrottler = PackageEventThrottler(LOCK_UI_REDIRECT_DEBOUNCE_MILLIS)
@@ -86,6 +87,12 @@ class LockMonitorService : Service() {
             ?: "unknown"
         val requestedAt = intent?.getLongExtra(EXTRA_REQUESTED_AT, System.currentTimeMillis())
             ?: System.currentTimeMillis()
+        val suppressForeground = intent?.getBooleanExtra(EXTRA_SUPPRESS_FOREGROUND, false) ?: false
+        val requireForeground = intent?.getBooleanExtra(EXTRA_REQUIRE_FOREGROUND, false) ?: false
+        if (suppressForeground) {
+            foregroundSuppressedUntilElapsed =
+                SystemClock.elapsedRealtime() + FOREGROUND_RETRY_INTERVAL_MILLIS
+        }
         val sinceLast = previousStartWalltime?.let { requestedAt - it }?.takeIf { it >= 0 }
         val debounceHandled = intent?.getBooleanExtra(EXTRA_DEBOUNCE_HANDLED, false) ?: false
         if (!debounceHandled && shouldDebounce(reason, bypass = false)) {
@@ -103,7 +110,12 @@ class LockMonitorService : Service() {
 
         acquireWakeLock()
         lockRepository.refreshDynamicLists()
-        ensureForeground(reason)
+        val foregroundReady = ensureForeground(reason, force = requireForeground)
+        if (requireForeground && !foregroundReady) {
+            Log.w(TAG, "Foreground start failed after startForegroundService; stopping service")
+            stopSelf()
+            return START_NOT_STICKY
+        }
         startMonitoring()
         demoteForegroundIfNeeded("startCommand")
         return START_STICKY
@@ -118,6 +130,7 @@ class LockMonitorService : Service() {
         lockStateJob = null
         deviceProtectedLockStateJob = null
         foregroundStarted = false
+        foregroundSuppressedUntilElapsed = 0L
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -355,13 +368,17 @@ class LockMonitorService : Service() {
             SettingsPackages.SETTINGS_ONLY.contains(packageName)
     }
 
-    private fun ensureForeground(reason: String) {
-        if (foregroundStarted) return
+    private fun ensureForeground(reason: String, force: Boolean): Boolean {
+        val nowElapsed = SystemClock.elapsedRealtime()
+        if (foregroundStarted) return true
+        if (!force && nowElapsed < foregroundSuppressedUntilElapsed) return true
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasPostNotificationPermissionCompat()) {
             Log.w(TAG, "Notification permission missing; running monitor without foreground")
-            foregroundStarted = true
-            return
+            if (!force) {
+                foregroundSuppressedUntilElapsed = nowElapsed + FOREGROUND_RETRY_INTERVAL_MILLIS
+            }
+            return !force
         }
 
         val notification = buildNotification()
@@ -374,10 +391,21 @@ class LockMonitorService : Service() {
             }
             foregroundStarted = true
             Log.d(TAG, "Entered foreground (reason=$reason type=${foregroundType ?: "none"})")
+            return true
         } catch (securityException: SecurityException) {
             Log.e(TAG, "Failed to enter foreground", securityException)
             stopSelf()
+            return false
+        } catch (runtimeException: RuntimeException) {
+            Log.e(TAG, "Failed to enter foreground; continue without foreground", runtimeException)
+            if (!force) {
+                foregroundSuppressedUntilElapsed = nowElapsed + FOREGROUND_RETRY_INTERVAL_MILLIS
+            } else {
+                stopSelf()
+            }
+            return false
         }
+        return false
     }
 
     private fun demoteForegroundIfNeeded(reason: String) {
@@ -462,11 +490,14 @@ class LockMonitorService : Service() {
         private const val FORCED_REDIRECT_INTERVAL_MILLIS = 400L
         private const val START_DEBOUNCE_MILLIS = 12_000L
         private const val RESTART_DEBOUNCE_MILLIS = 3_000L
+        private const val FOREGROUND_RETRY_INTERVAL_MILLIS = 30_000L
         private const val RESTART_REASON = "service_restart"
         private const val WAKE_LOCK_TIMEOUT_MILLIS = 180_000L
         private const val EXTRA_START_REASON = "extra_start_reason"
         private const val EXTRA_REQUESTED_AT = "extra_requested_at"
         private const val EXTRA_DEBOUNCE_HANDLED = "extra_debounce_handled"
+        private const val EXTRA_SUPPRESS_FOREGROUND = "extra_suppress_foreground"
+        private const val EXTRA_REQUIRE_FOREGROUND = "extra_require_foreground"
         private var previousStartWalltime: Long? = null
 
         @Volatile
@@ -476,23 +507,32 @@ class LockMonitorService : Service() {
             if (shouldDebounce(reason, bypassDebounce)) return
 
             val appContext = context.applicationContext
+            val suppressForeground = shouldSuppressForegroundStart(reason)
+            val canStartForeground =
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    appContext.hasPostNotificationPermissionCompat()
+            val requireForeground =
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && canStartForeground && !suppressForeground
             val intent = Intent(appContext, LockMonitorService::class.java).apply {
                 putExtra(EXTRA_START_REASON, reason)
                 putExtra(EXTRA_REQUESTED_AT, System.currentTimeMillis())
                 putExtra(EXTRA_DEBOUNCE_HANDLED, true)
+                putExtra(EXTRA_SUPPRESS_FOREGROUND, suppressForeground)
+                putExtra(EXTRA_REQUIRE_FOREGROUND, requireForeground)
             }
-            val canStartForeground =
-                Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                    appContext.hasPostNotificationPermissionCompat()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && canStartForeground) {
+            if (requireForeground) {
                 runCatching { ContextCompat.startForegroundService(appContext, intent) }
-                    .onFailure { Log.e(TAG, "Unable to start lock monitor service", it) }
+                    .onFailure { throwable ->
+                        Log.e(TAG, "Unable to start lock monitor service", throwable)
+                        ServiceRestartScheduler.schedule(appContext, LockMonitorService::class.java, RESTART_REQUEST_CODE)
+                    }
             } else {
                 runCatching {
                     @Suppress("DEPRECATION")
                     appContext.startService(intent)
                 }.onFailure { throwable ->
                     Log.e(TAG, "Unable to start lock monitor service", throwable)
+                    ServiceRestartScheduler.schedule(appContext, LockMonitorService::class.java, RESTART_REQUEST_CODE)
                 }
             }
         }
@@ -505,6 +545,10 @@ class LockMonitorService : Service() {
         private fun shouldDebounce(reason: String?, bypass: Boolean): Boolean {
             val nowElapsed = SystemClock.elapsedRealtime()
             return shouldDebounceInternal(bypass, reason, nowElapsed)
+        }
+
+        private fun shouldSuppressForegroundStart(reason: String): Boolean {
+            return reason.startsWith("boot_") || reason == "workmanager"
         }
 
         private fun shouldDebounceInternal(
