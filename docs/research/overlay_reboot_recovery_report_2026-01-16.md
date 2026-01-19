@@ -1,7 +1,7 @@
 # 再起動時オーバーレイ復帰 調査報告（2026-01-16）
 
-最終確認日: 2026-01-17
-更新理由: 境界・更新系の再起動シナリオ（no_lock / lock_end_before / lock_end_after / MY_PACKAGE_REPLACED / lock_60m短縮）とテストスクリプトの安定化（TestControlReceiver 直指定・DP 読み取り改善）、FGS 起動例外対策を反映。
+最終確認日: 2026-01-18
+更新理由: 2026/01/18 dp_corrupt_missing_end / force-idle 併用 / cold_boot の追加検証結果、実機記録テンプレート、実機向け追加シナリオ（起動後のユーザー解錠遷移/解錠タイミング差分/バッテリー最適化差分）を反映。
 
 ## 調査目的
 - 端末再起動後にオーバーレイが復帰する実装になっているかを確認し、復帰失敗の懸念点を洗い出す。
@@ -29,7 +29,7 @@
     `service/WatchdogScheduler.kt`, `service/WatchdogWorker.kt`, `service/WatchdogWorkScheduler.kt`
 
 結論: **再起動時にオーバーレイ復帰を試みる実装は確認できる**。  
-エミュレータ上では lock_immediate / lock_30s / lock_3m / lock_10m で復帰ログを確認できた。
+エミュレータ上では lock_immediate / lock_30s / lock_3m / lock_10m / lock_60m（実時間60分待機・ロック設定1時間5分）に加え、battery_saver_on / screen_off_long / lock_60m_no_reboot / lock_90m / lock_120m / time_shift / dp_corrupt_missing_end / cold_boot の追加検証ログを確認できた（短縮・時間シフト・force-idle 併用あり）。
 
 ---
 
@@ -55,7 +55,32 @@
 - lock_end_before: PASS（LOCKED_BOOT_COMPLETED でサービス復帰ログを確認）
 - lock_end_after: PASS（終了直後再起動で復帰せず）
 - my_package_replaced: PASS（MY_PACKAGE_REPLACED でサービス再起動）
-- lock_60m: PASS（`LOCK_60M_WAIT_SECONDS=600` で10分待機後に再起動。実時間60分は手動検証を推奨）
+- lock_60m: PASS（`LOCK_60M_WAIT_SECONDS=3600` で実時間60分待機後に再起動。ロック設定は1時間5分。待機中のオーバーレイ継続はログ監視なし）
+
+## 追加シナリオテスト結果（エミュレータ・2026-01-18）
+実施日: 2026-01-18  
+端末: Medium_Phone_API_36.1_3（Android 16 / API 36）  
+前提: 必須4権限はすべて ON。TestControlReceiver でロック付与/解除。  
+備考: 以下は **短縮版** / **時間シフト（FAST_FORWARD_TIME_SHIFT=1）** / **force-idle（FORCE_DEVICEIDLE=1）** を用いた検証。時間シフトによりログ時刻が 2026-01-19 表記になることがあるが、実施日は 2026-01-18。長時間の実時間検証は別途実機で実施推奨。
+
+- time_shift: PASS（`cmd alarm set-time` で時刻を前後、ロック継続を確認）
+- battery_saver_on: PASS（`BATTERY_SAVER_WAIT_SECONDS=300` + force-idle 併用で再起動）
+- screen_off_long: PASS（`SCREEN_OFF_WAIT_SECONDS=300` + force-idle 併用、再起動なし）
+- lock_60m_no_reboot: PASS（`LOCK_60M_WAIT_SECONDS=600` + force-idle 併用、再起動なし）
+- lock_90m: PASS（時間シフトで 90 分相当へジャンプ後に再起動）
+- lock_120m: PASS（時間シフトで 120 分相当へジャンプ後に再起動）
+- dp_corrupt_missing_end: PASS（lock_end_timestamp を削除して再起動 → Boot レシーバ/サービス起動ログを確認。`lockEnd=null` を観測）
+- cold_boot: PASS（エミュレータを power off → cold boot して復帰ログを確認）
+
+実行メモ:
+- `FORCE_DEVICEIDLE=1 BATTERY_SAVER_WAIT_SECONDS=300 bash tools/reboot_scenarios.sh battery_saver_on`
+- `FORCE_DEVICEIDLE=1 SCREEN_OFF_WAIT_SECONDS=300 bash tools/reboot_scenarios.sh screen_off_long`
+- `FORCE_DEVICEIDLE=1 LOCK_60M_WAIT_SECONDS=600 bash tools/reboot_scenarios.sh lock_60m_no_reboot`
+- `FAST_FORWARD_TIME_SHIFT=1 bash tools/reboot_scenarios.sh lock_90m`
+- `FAST_FORWARD_TIME_SHIFT=1 bash tools/reboot_scenarios.sh lock_120m`
+- `bash tools/reboot_scenarios.sh time_shift`
+- `bash tools/reboot_scenarios.sh dp_corrupt_missing_end`
+- `bash tools/reboot_scenarios.sh cold_boot`
 
 ## Doze 強制テスト（エミュレータ）
 実施日: 2026-01-16  
@@ -99,6 +124,7 @@
 ### P2（確度: 低）DP 状態の欠損・部分欠損による false negative
 - **確認内容**: Direct Boot ストア書き込み失敗はログのみ。`OverlayLockService` の描画条件は `lockEndTimestamp != null` が必須。
 - **想定リスク**: DP に `is_locked=true` が残っていても `lockEndTimestamp` が欠けると即停止。
+- **追加検証**: `dp_corrupt_missing_end` で `lock_end_timestamp` を削除した場合、Boot レシーバは起動ログを出す一方で `WatchdogWorker` に `lockEnd=null` が出力されることを確認。
 - **根拠コード**:
   - `app/src/main/java/jp/kawai/ultrafocus/data/datastore/DirectBootLockStateStore.kt`
   - `app/src/main/java/jp/kawai/ultrafocus/service/OverlayLockService.kt`
@@ -112,9 +138,10 @@
 - **確認内容**: `BootFastStartupReceiver` が `exported=true` で `ACTION_RETRY` を受け取れる。
 - **想定リスク**: 第三者アプリから不要起動される可能性（DoS/乱発）。復帰信頼性への直接影響は小さいが安定性面の懸念。
 
-### P2（確度: 中）緊急解除アクティブ状態が復帰時のオーバーレイを抑止
+### P3（確度: 低）緊急解除アクティブ状態による一時的な抑止（仕様上の挙動）
 - **確認内容**: `EmergencyUnlockStateStore` がアクティブだと `OverlayLockService.start()` は起動をスキップする。
-- **想定リスク**: 緊急解除フロー中に再起動すると、一定期間（最大 10 分）オーバーレイが表示されず復帰が弱くなる。
+- **再評価**: `EmergencyUnlockStateStore` は `SystemClock.elapsedRealtime()` を保存し、**再起動後は経過時間が巻き戻るため `age < 0` 判定で自動無効化**される。さらに TTL は最大 10 分。
+- **結論**: 再起動後まで抑止が継続する可能性は低い（仕様上の一時抑止に限定）。
 - **根拠コード**:
   - `app/src/main/java/jp/kawai/ultrafocus/emergency/EmergencyUnlockStateStore.kt`
   - `app/src/main/java/jp/kawai/ultrafocus/service/OverlayLockService.kt`
@@ -156,9 +183,48 @@
 - [x] lock_end_before（終了前再起動で復帰）。
 - [x] lock_end_after（終了後再起動で復帰しない）。
 - [x] MY_PACKAGE_REPLACED（アプリ更新相当で復帰）。
-- [x] lock_60m（10分短縮で実施。実時間60分は手動検証推奨）。
-- [ ] DP ストア不整合（手動削除/書き込み失敗想定）時の復帰挙動。
+- [x] lock_60m（実時間60分待機・ロック設定1時間5分で実施）。
+- [x] DP ストア不整合（手動削除/書き込み失敗想定）時の復帰挙動（dp_corrupt_missing_end で確認）。
 - [ ] OEM 端末（Samsung / Xiaomi など）での復帰率比較。
+- [x] lock_60m_no_reboot（短縮: `LOCK_60M_WAIT_SECONDS=600`）。
+- [x] lock_90m / lock_120m（時間シフトで短縮実施）。
+- [x] screen_off_long（短縮: `SCREEN_OFF_WAIT_SECONDS=300`）。
+- [x] battery_saver_on（短縮: `BATTERY_SAVER_WAIT_SECONDS=300`）。
+- [x] time_shift（`cmd alarm set-time` で前後シフト確認）。
+- [x] cold_boot（エミュレータ power off → cold boot）。
+
+---
+
+## 実機検証（未実施・要確認）
+**注意**: 以下は実機でのみ確認可能。結果は `/docs/research/overlay_reboot_recovery_real_device_log.md` に記録する。
+
+- [ ] power_off_boot（実機の電源OFF→起動）
+- [ ] lock_60m（実時間60分→再起動）
+- [ ] lock_90m（実時間90分→再起動）
+- [ ] lock_120m（実時間120分→再起動）
+- [ ] battery_saver_long（省電力ON + 長時間→再起動）
+- [ ] screen_off_long（画面OFF + 長時間→ロック維持）
+- [ ] OEM差分（Pixel / Samsung / Xiaomi など複数端末で同一手順）
+- [ ] unlock_transition（起動→解錠でのDP→CE切替後もオーバーレイ維持）
+- [ ] unlock_transition_early（起動直後に解錠）
+- [ ] unlock_transition_late（起動後しばらく待って解錠）
+- [ ] battery_opt_restricted / battery_opt_optimized / battery_opt_unrestricted（バッテリー最適化差分）
+
+---
+
+## 追加テストケース（提案）
+※ 短縮・時間シフトでの確認は実施済み。実時間・実機での再検証は引き続き推奨。
+### 高優先
+- lock_60m_no_reboot: force-idle 併用の短縮検証は実施済み。実時間 60 分は OEM 実機での再確認が望ましい。
+- lock_90m / lock_120m: 時間シフトで検証済み。実時間の追加検証は任意。
+
+### 中優先
+- screen_off_long: force-idle 併用の短縮検証は実施済み。実時間の追加検証は任意。
+- battery_saver_on: force-idle 併用の短縮検証は実施済み。実時間の追加検証は任意。
+
+### 低優先（端末差）
+- oem_devices: Pixel + Samsung 等で再起動復帰率を比較。
+- time_shift: システム時刻変更（進める/戻す）で lockEnd 判定のズレを確認。
 
 ---
 

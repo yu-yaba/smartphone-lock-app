@@ -55,8 +55,8 @@
 | 8 | IaC & リリース | Terraform / β版公開 |
 
 
-## 🚦 実装進捗サマリ（2026/01/17 時点）
-更新根拠: 2026/01/17 再起動シナリオ拡張（no_lock / lock_end_before / lock_end_after / MY_PACKAGE_REPLACED / lock_60m短縮）と TestControlReceiver/ログ判定改善、FGS 起動例外対策を反映
+## 🚦 実装進捗サマリ（2026/01/18 時点）
+更新根拠: 2026/01/18 dp_corrupt_missing_end / force-idle 併用 / cold_boot の追加検証結果と実機記録テンプレート・追加シナリオ（解錠タイミング差分含む）を反映
 
 | フェーズ | ステータス | 現状ハイライト | 次のタスク |
 |---------|------------|----------------|------------|
@@ -67,7 +67,7 @@
 | 4 | 🟡 一部実装 | `LockMonitorService` + `UsageWatcher` が設定系に加え SystemUI/ランチャー/音声アシスタント/インストーラ/主要ストアを検知し Overlay/Lock UI を再表示。`PackageEventThrottler` でデバウンス。ロック中は既定ダイヤラ/SMSのみ例外許可し、オーバーレイにショートカットを配置。許可アプリ遷移のちらつきを抑止。 | SystemUI 以外の抜け道の網羅、ActivityManager フォールバック、動的ホワイト/ブラックリスト |
 | 5 | 🔴 未着手 | Manifest に `LockNotificationListenerService` を宣言しただけで、通知キャンセル処理は空実装 | 通知キャンセル／許可リスト／通知経由の設定遷移ブロック |
 | 6 | 🟡 一部実装 | `WatchdogScheduler` が正確アラームでハートビートとロック終了アラームを予約し、`BootCompletedReceiver` が CE/DP スナップショットを突き合わせてサービス再起動・ウォッチドッグ再設定。`ServiceRestartScheduler` でサービス強制終了後の再起動を統一。FGS 起動例外（startForegroundService 未達）対策を追加。 | WorkManager 自己診断、正確アラーム拒否端末へのフォールバック、解除通知 UX・ログ計測の整備 |
-| 7 | 🟡 一部実装 | `ServiceRestartSchedulerTest` / `BootFastStartupReceiverTest` を追加し、エミュレータで再起動シナリオ（lock_immediate/30s/3m/10m + no_lock / lock_end_before / lock_end_after / MY_PACKAGE_REPLACED / lock_60m短縮）と通知権限OFFの復帰、Doze強制30分、Exact Alarm拒否を確認。 | ViewModel/Repository/Service の単体テスト拡充と実機 E2E シナリオ整備 |
+| 7 | 🟡 一部実装 | `ServiceRestartSchedulerTest` / `BootFastStartupReceiverTest` を追加し、エミュレータで再起動シナリオ（lock_immediate/30s/3m/10m + no_lock / lock_end_before / lock_end_after / MY_PACKAGE_REPLACED / lock_60m実時間60分待機・ロック設定1時間5分）と通知権限OFFの復帰、Doze強制30分、Exact Alarm拒否を確認。追加で battery_saver_on / screen_off_long / lock_60m_no_reboot / lock_90m / lock_120m / time_shift を実施（短縮・時間シフトあり）。`dp_corrupt_missing_end` / force-idle 併用 / cold_boot の再検証を追加。 | 実時間での長時間継続、OEM差分、時刻変更の実機再検証 |
 | 8 | 🔴 未着手 | IaC・Play 配布体制は未整備 | Terraform で Supabase 管理、β版申請のドキュメント／手順策定 |
 
 ---

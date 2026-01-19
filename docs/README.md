@@ -1,7 +1,7 @@
 # ドキュメント目次
 
-最終確認日: 2026-01-17
-更新理由: 2026/01/17 再起動シナリオ拡張（no_lock / lock_end_before / lock_end_after / MY_PACKAGE_REPLACED / lock_60m短縮）と TestControlReceiver/ログ判定改善、FGS 起動例外対策を反映。
+最終確認日: 2026-01-18
+更新理由: 2026/01/18 dp_corrupt_missing_end / force-idle 併用 / cold_boot の追加検証結果と実機記録テンプレート・追加シナリオ（解錠タイミング差分含む）を反映。
 
 最初に読む
 - /README.md（プロダクト概要）
@@ -26,6 +26,7 @@
 - /docs/research/focusguard_analysis.md
 - /docs/research/overlay_reliability_investigation_plan.md
 - /docs/research/overlay_reboot_recovery_report_2026-01-16.md
+- /docs/research/overlay_reboot_recovery_real_device_log.md
 - /docs/store/play_release_settings.md
 
 運用ルール
