@@ -7,9 +7,18 @@
 #   4) lock_3m         : lock -> wait ~3m  -> reboot
 #   5) lock_10m        : lock -> wait ~9m  -> reboot (long tail recovery)
 #   6) lock_60m        : lock -> wait ~60m -> reboot
-#   7) lock_end_before : lock -> wait near end -> reboot (expect restore)
-#   8) lock_end_after  : lock already ended -> reboot (expect no restore)
-#   9) my_package_replaced : reinstall debug build (expect restore)
+#   7) lock_60m_no_reboot : lock -> wait ~60m -> check without reboot
+#   8) lock_90m        : lock -> wait ~90m -> reboot
+#   9) lock_120m       : lock -> wait ~120m -> reboot
+#  10) screen_off_long : lock -> screen off -> wait -> check without reboot
+#  11) battery_saver_on: lock -> enable battery saver -> wait -> reboot
+#  12) time_shift      : lock -> shift time forward/back -> check
+#  13) dp_corrupt_missing_end : lock -> remove lock_end_timestamp -> reboot
+#  14) cold_boot       : lock -> emulator power off -> cold boot -> check
+#  15) power_off_boot  : lock -> (manual) power off -> boot -> check
+#  16) lock_end_before : lock -> wait near end -> reboot (expect restore)
+#  17) lock_end_after  : lock already ended -> reboot (expect no restore)
+#  18) my_package_replaced : reinstall debug build (expect restore)
 # Usage examples:
 #   bash tools/reboot_scenarios.sh all
 #   bash tools/reboot_scenarios.sh lock_30s
@@ -22,13 +31,21 @@ RECEIVER_CLASS="${RECEIVER_CLASS:-jp.kawai.ultrafocus.receiver.TestControlReceiv
 LOG_FILTER="BootFastStartupReceiver|BootCompletedReceiver|LockMonitorService|OverlayLockService|WatchdogScheduler|WatchdogWorkScheduler|WatchdogWorker"
 PREF_PATH="/data/user_de/0/${APP_ID}/shared_prefs/direct_boot_lock_state.xml"
 
-SCENARIOS=("no_lock" "lock_immediate" "lock_30s" "lock_3m" "lock_10m" "lock_60m" "lock_end_before" "lock_end_after" "my_package_replaced")
+SCENARIOS=("no_lock" "lock_immediate" "lock_30s" "lock_3m" "lock_10m" "lock_60m" "lock_60m_no_reboot" "lock_90m" "lock_120m" "screen_off_long" "battery_saver_on" "time_shift" "dp_corrupt_missing_end" "cold_boot" "power_off_boot" "lock_end_before" "lock_end_after" "my_package_replaced")
 
 SERIAL="${ANDROID_SERIAL:-}"
 # ロック時間（分）。デフォルトを 20 分に延長（10 分シナリオでの失効防止）。必要なら環境変数で上書き。
 LOCK_MINUTES="${LOCK_MINUTES:-20}"
 # 長時間シナリオ向けロック時間（分）
-LOCK_MINUTES_LONG="${LOCK_MINUTES_LONG:-120}"
+LOCK_MINUTES_LONG="${LOCK_MINUTES_LONG:-150}"
+# 60分ノーリブート用ロック時間（分）
+LOCK_MINUTES_60M_NO_REBOOT="${LOCK_MINUTES_60M_NO_REBOOT:-65}"
+# 画面消灯・省電力シナリオ向けロック時間（分）
+LOCK_MINUTES_SCREEN_OFF="${LOCK_MINUTES_SCREEN_OFF:-70}"
+LOCK_MINUTES_BATTERY_SAVER="${LOCK_MINUTES_BATTERY_SAVER:-45}"
+# 90分・120分シナリオ向けロック時間（分）
+LOCK_MINUTES_90M="${LOCK_MINUTES_90M:-150}"
+LOCK_MINUTES_120M="${LOCK_MINUTES_120M:-180}"
 
 # ブート後にログ収集するまでの待機秒数（Boot レシーバ/再試行を拾う）。必要なら環境変数で上書き。
 POST_BOOT_WAIT_SECONDS="${POST_BOOT_WAIT_SECONDS:-35}"
@@ -45,6 +62,22 @@ LOCK_END_AFTER_OFFSET_SECONDS="${LOCK_END_AFTER_OFFSET_SECONDS:--30}"     # 終�
 
 # lock_60m 待機秒数
 LOCK_60M_WAIT_SECONDS="${LOCK_60M_WAIT_SECONDS:-3600}"
+# lock_90m / lock_120m 待機秒数
+LOCK_90M_WAIT_SECONDS="${LOCK_90M_WAIT_SECONDS:-5400}"
+LOCK_120M_WAIT_SECONDS="${LOCK_120M_WAIT_SECONDS:-7200}"
+
+# 画面消灯・省電力・時刻変更シナリオ用
+SCREEN_OFF_WAIT_SECONDS="${SCREEN_OFF_WAIT_SECONDS:-3600}"
+BATTERY_SAVER_WAIT_SECONDS="${BATTERY_SAVER_WAIT_SECONDS:-1800}"
+TIME_SHIFT_FORWARD_SECONDS="${TIME_SHIFT_FORWARD_SECONDS:-900}"
+TIME_SHIFT_BACK_SECONDS="${TIME_SHIFT_BACK_SECONDS:-900}"
+# 長時間待機を時間シフトで短縮する場合に使用
+FAST_FORWARD_TIME_SHIFT="${FAST_FORWARD_TIME_SHIFT:-0}"
+# emulator cold boot 用
+EMULATOR_ARGS="${EMULATOR_ARGS:--no-snapshot-load -no-snapshot-save}"
+# 省電力/画面OFF/長時間シナリオで Doze を強制する（0/1）
+FORCE_DEVICEIDLE="${FORCE_DEVICEIDLE:-0}"
+DEVICEIDLE_MODE="${DEVICEIDLE_MODE:-deep}"
 
 pick_serial() {
   if [[ -n "$SERIAL" ]]; then
@@ -70,6 +103,114 @@ adb_cmd() {
 
 info() { echo "[INFO] $*"; }
 warn() { echo "[WARN] $*"; }
+
+screen_off() {
+  adb_cmd shell input keyevent 223 >/dev/null 2>&1 || true
+  adb_cmd shell input keyevent 26 >/dev/null 2>&1 || true
+}
+
+screen_on() {
+  adb_cmd shell input keyevent 224 >/dev/null 2>&1 || true
+  adb_cmd shell input keyevent 26 >/dev/null 2>&1 || true
+}
+
+set_battery_saver() {
+  local enabled="$1"
+  adb_cmd shell settings put global low_power "${enabled}" >/dev/null 2>&1 || true
+  adb_cmd shell cmd power set-mode "${enabled}" >/dev/null 2>&1 || true
+}
+
+battery_saver_status() {
+  adb_cmd shell settings get global low_power 2>/dev/null | tr -d '\r'
+}
+
+resolve_emulator_cmd() {
+  if [[ -n "${EMULATOR_CMD:-}" ]]; then
+    echo "${EMULATOR_CMD}"
+    return 0
+  fi
+  if command -v emulator >/dev/null 2>&1; then
+    echo "emulator"
+    return 0
+  fi
+  local sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+  if [[ -n "${sdk_root}" && -x "${sdk_root}/emulator/emulator" ]]; then
+    echo "${sdk_root}/emulator/emulator"
+    return 0
+  fi
+  return 1
+}
+
+current_avd_name() {
+  adb_cmd emu avd name 2>/dev/null | tr -d '\r' | awk 'NF && $1!="OK"{print; exit}'
+}
+
+start_emulator_cold_boot() {
+  local avd_name="$1"
+  local emulator_cmd
+  emulator_cmd="$(resolve_emulator_cmd)" || {
+    warn "Cannot find emulator command. Set EMULATOR_CMD or ANDROID_SDK_ROOT."
+    return 1
+  }
+  if [[ -z "${avd_name}" ]]; then
+    warn "AVD name not detected. Set AVD_NAME env."
+    return 1
+  fi
+  local args=()
+  read -r -a args <<<"${EMULATOR_ARGS}"
+  info "Starting emulator cold boot: ${avd_name}"
+  nohup "${emulator_cmd}" -avd "${avd_name}" "${args[@]}" >"/tmp/emulator_${avd_name}.log" 2>&1 &
+  sleep 2
+}
+
+deviceidle_force() {
+  local mode="${1:-deep}"
+  adb_cmd shell cmd deviceidle force-idle "${mode}" >/dev/null 2>&1 || true
+}
+
+deviceidle_unforce() {
+  adb_cmd shell cmd deviceidle unforce >/dev/null 2>&1 || true
+}
+
+deviceidle_status() {
+  local force deep
+  force="$(adb_cmd shell cmd deviceidle get force 2>/dev/null | tr -d '\r' || true)"
+  deep="$(adb_cmd shell cmd deviceidle get deep 2>/dev/null | tr -d '\r' || true)"
+  echo "force=${force} deep=${deep}"
+}
+
+set_auto_time() {
+  local enabled="$1"
+  adb_cmd shell settings put global auto_time "${enabled}" >/dev/null 2>&1 || true
+  adb_cmd shell settings put global auto_time_zone "${enabled}" >/dev/null 2>&1 || true
+}
+
+set_device_time_millis() {
+  local target_ms="$1"
+  adb_cmd shell cmd alarm set-time "${target_ms}" >/dev/null 2>&1
+}
+
+restore_setting() {
+  local key="$1"
+  local value="$2"
+  if [[ -z "${value}" || "${value}" == "null" ]]; then
+    return
+  fi
+  adb_cmd shell settings put global "${key}" "${value}" >/dev/null 2>&1 || true
+}
+
+corrupt_dp_remove_lock_end() {
+  if ! adb_cmd shell run-as "${APP_ID}" ls "${PREF_PATH}" >/dev/null 2>&1; then
+    warn "Cannot access DP prefs to corrupt (run-as failed)"
+    return 1
+  fi
+  adb_cmd shell "run-as ${APP_ID} sh -c 'grep -v lock_end_timestamp ${PREF_PATH} > ${PREF_PATH}.tmp && mv ${PREF_PATH}.tmp ${PREF_PATH}'" >/dev/null 2>&1 || return 1
+  return 0
+}
+
+dump_service_state() {
+  adb_cmd shell dumpsys activity services "${APP_ID}" 2>/dev/null | grep -E "OverlayLockService|LockMonitorService" || true
+}
 
 wait_for_boot() {
   adb_cmd wait-for-device >/dev/null
@@ -185,6 +326,19 @@ evaluate_logs() {
     else
       warn "Verdict: FAIL? unexpected heartbeat schedule in no-lock scenario"
     fi
+  fi
+}
+
+evaluate_runtime_logs() {
+  local outfile="$1"
+  local has_heartbeat has_monitor has_overlay
+  has_heartbeat=$(grep -m1 -E "WatchdogWorker: WorkManager heartbeat|WatchdogScheduler: Schedule heartbeat" "${outfile}" || true)
+  has_monitor=$(grep -m1 -E "LockMonitorService.*onStartCommand" "${outfile}" || true)
+  has_overlay=$(grep -m1 -E "OverlayLockService.*onStartCommand" "${outfile}" || true)
+  if [[ -n "${has_heartbeat}" || -n "${has_monitor}" || -n "${has_overlay}" ]]; then
+    info "Verdict: PASS (runtime: heartbeat/service logs observed)"
+  else
+    warn "Verdict: WARN? runtime logs not observed; confirm with dumpsys"
   fi
 }
 
@@ -583,6 +737,284 @@ scenario_lock_60m() {
   evaluate_logs "${tmp}" 1
 }
 
+scenario_lock_60m_no_reboot() {
+  info "Scenario: lock_60m_no_reboot"
+  local tmp prev_minutes
+  tmp=$(mktemp)
+  collect_logs "${tmp}"
+  prev_minutes="${LOCK_MINUTES}"
+  LOCK_MINUTES="${LOCK_MINUTES_60M_NO_REBOOT}"
+  prompt_lock_if_needed "start lock now (no reboot after ~3600s)"
+  LOCK_MINUTES="${prev_minutes}"
+  if [[ "${FORCE_DEVICEIDLE}" == "1" ]]; then
+    info "Force device idle (${DEVICEIDLE_MODE})"
+    deviceidle_force "${DEVICEIDLE_MODE}"
+    info "Device idle status: $(deviceidle_status)"
+  fi
+  sleep "${LOCK_60M_WAIT_SECONDS}"
+  if [[ "${FORCE_DEVICEIDLE}" == "1" ]]; then
+    deviceidle_unforce
+  fi
+  info "Runtime lock state (DP):"
+  read_lock_state
+  info "Runtime service state:"
+  dump_service_state
+  info "Runtime key logs:"
+  tmp=$(mktemp)
+  collect_logs "${tmp}"
+  evaluate_runtime_logs "${tmp}"
+}
+
+scenario_lock_90m() {
+  info "Scenario: lock_90m"
+  local tmp prev_minutes orig_auto_time orig_auto_tz
+  tmp=$(mktemp)
+  collect_logs "${tmp}"
+  prev_minutes="${LOCK_MINUTES}"
+  LOCK_MINUTES="${LOCK_MINUTES_90M}"
+  prompt_lock_if_needed "start lock now (reboot after ~5400s)"
+  LOCK_MINUTES="${prev_minutes}"
+  if [[ "${FAST_FORWARD_TIME_SHIFT}" == "1" ]]; then
+    local orig_time
+    orig_time="$(device_now_millis)"
+    orig_auto_time="$(adb_cmd shell settings get global auto_time 2>/dev/null | tr -d '\r')"
+    orig_auto_tz="$(adb_cmd shell settings get global auto_time_zone 2>/dev/null | tr -d '\r')"
+    set_auto_time 0
+    info "Fast-forward time by ${LOCK_90M_WAIT_SECONDS}s"
+    set_device_time_millis "$((orig_time + LOCK_90M_WAIT_SECONDS * 1000))" || warn "Fast-forward failed; falling back to sleep"
+  else
+    sleep "${LOCK_90M_WAIT_SECONDS}"
+  fi
+  reboot_and_wait
+  info "Post-boot lock state (DP):"
+  read_lock_state
+  sleep "${POST_BOOT_SERVICE_WAIT_SECONDS}"
+  info "Post-boot key logs:"
+  tmp=$(mktemp)
+  collect_logs "${tmp}"
+  evaluate_logs "${tmp}" 1
+  if [[ "${FAST_FORWARD_TIME_SHIFT}" == "1" ]]; then
+    restore_setting auto_time "${orig_auto_time}"
+    restore_setting auto_time_zone "${orig_auto_tz}"
+  fi
+}
+
+scenario_lock_120m() {
+  info "Scenario: lock_120m"
+  local tmp prev_minutes orig_auto_time orig_auto_tz
+  tmp=$(mktemp)
+  collect_logs "${tmp}"
+  prev_minutes="${LOCK_MINUTES}"
+  LOCK_MINUTES="${LOCK_MINUTES_120M}"
+  prompt_lock_if_needed "start lock now (reboot after ~7200s)"
+  LOCK_MINUTES="${prev_minutes}"
+  if [[ "${FAST_FORWARD_TIME_SHIFT}" == "1" ]]; then
+    local orig_time
+    orig_time="$(device_now_millis)"
+    orig_auto_time="$(adb_cmd shell settings get global auto_time 2>/dev/null | tr -d '\r')"
+    orig_auto_tz="$(adb_cmd shell settings get global auto_time_zone 2>/dev/null | tr -d '\r')"
+    set_auto_time 0
+    info "Fast-forward time by ${LOCK_120M_WAIT_SECONDS}s"
+    set_device_time_millis "$((orig_time + LOCK_120M_WAIT_SECONDS * 1000))" || warn "Fast-forward failed; falling back to sleep"
+  else
+    sleep "${LOCK_120M_WAIT_SECONDS}"
+  fi
+  reboot_and_wait
+  info "Post-boot lock state (DP):"
+  read_lock_state
+  sleep "${POST_BOOT_SERVICE_WAIT_SECONDS}"
+  info "Post-boot key logs:"
+  tmp=$(mktemp)
+  collect_logs "${tmp}"
+  evaluate_logs "${tmp}" 1
+  if [[ "${FAST_FORWARD_TIME_SHIFT}" == "1" ]]; then
+    restore_setting auto_time "${orig_auto_time}"
+    restore_setting auto_time_zone "${orig_auto_tz}"
+  fi
+}
+
+scenario_screen_off_long() {
+  info "Scenario: screen_off_long"
+  local tmp prev_minutes
+  tmp=$(mktemp)
+  collect_logs "${tmp}"
+  prev_minutes="${LOCK_MINUTES}"
+  LOCK_MINUTES="${LOCK_MINUTES_SCREEN_OFF}"
+  prompt_lock_if_needed "start lock now (screen off long)"
+  LOCK_MINUTES="${prev_minutes}"
+  info "Turning screen off for ${SCREEN_OFF_WAIT_SECONDS}s"
+  screen_off
+  if [[ "${FORCE_DEVICEIDLE}" == "1" ]]; then
+    info "Force device idle (${DEVICEIDLE_MODE})"
+    deviceidle_force "${DEVICEIDLE_MODE}"
+    info "Device idle status: $(deviceidle_status)"
+  fi
+  sleep "${SCREEN_OFF_WAIT_SECONDS}"
+  if [[ "${FORCE_DEVICEIDLE}" == "1" ]]; then
+    deviceidle_unforce
+  fi
+  screen_on
+  info "Runtime lock state (DP):"
+  read_lock_state
+  info "Runtime service state:"
+  dump_service_state
+  info "Runtime key logs:"
+  tmp=$(mktemp)
+  collect_logs "${tmp}"
+  evaluate_runtime_logs "${tmp}"
+}
+
+scenario_battery_saver_on() {
+  info "Scenario: battery_saver_on"
+  local tmp prev_minutes
+  tmp=$(mktemp)
+  collect_logs "${tmp}"
+  prev_minutes="${LOCK_MINUTES}"
+  LOCK_MINUTES="${LOCK_MINUTES_BATTERY_SAVER}"
+  prompt_lock_if_needed "start lock now (battery saver on)"
+  LOCK_MINUTES="${prev_minutes}"
+  info "Enable battery saver"
+  set_battery_saver 1
+  info "Battery saver status: $(battery_saver_status)"
+  if [[ "${FORCE_DEVICEIDLE}" == "1" ]]; then
+    info "Force device idle (${DEVICEIDLE_MODE})"
+    deviceidle_force "${DEVICEIDLE_MODE}"
+    info "Device idle status: $(deviceidle_status)"
+  fi
+  sleep "${BATTERY_SAVER_WAIT_SECONDS}"
+  if [[ "${FORCE_DEVICEIDLE}" == "1" ]]; then
+    deviceidle_unforce
+  fi
+  reboot_and_wait
+  info "Post-boot lock state (DP):"
+  read_lock_state
+  sleep "${POST_BOOT_SERVICE_WAIT_SECONDS}"
+  info "Post-boot key logs:"
+  tmp=$(mktemp)
+  collect_logs "${tmp}"
+  evaluate_logs "${tmp}" 1
+  set_battery_saver 0
+}
+
+scenario_time_shift() {
+  info "Scenario: time_shift"
+  local tmp prev_minutes
+  tmp=$(mktemp)
+  collect_logs "${tmp}"
+  prev_minutes="${LOCK_MINUTES}"
+  LOCK_MINUTES="${LOCK_MINUTES_60M_NO_REBOOT}"
+  prompt_lock_if_needed "start lock now (time shift)"
+  LOCK_MINUTES="${prev_minutes}"
+  local orig_time orig_auto_time orig_auto_tz
+  orig_time="$(device_now_millis)"
+  orig_auto_time="$(adb_cmd shell settings get global auto_time 2>/dev/null | tr -d '\r')"
+  orig_auto_tz="$(adb_cmd shell settings get global auto_time_zone 2>/dev/null | tr -d '\r')"
+  set_auto_time 0
+  local forward_ms back_ms
+  forward_ms=$((orig_time + TIME_SHIFT_FORWARD_SECONDS * 1000))
+  back_ms=$((orig_time - TIME_SHIFT_BACK_SECONDS * 1000))
+  if ! set_device_time_millis "${forward_ms}"; then
+    warn "Failed to shift time forward; skipping time_shift scenario"
+    restore_setting auto_time "${orig_auto_time}"
+    restore_setting auto_time_zone "${orig_auto_tz}"
+    return
+  fi
+  sleep 2
+  info "After time shift forward:"
+  read_lock_state
+  if ! set_device_time_millis "${back_ms}"; then
+    warn "Failed to shift time backward"
+  fi
+  sleep 2
+  info "After time shift backward:"
+  read_lock_state
+  set_device_time_millis "${orig_time}" || true
+  restore_setting auto_time "${orig_auto_time}"
+  restore_setting auto_time_zone "${orig_auto_tz}"
+  info "Runtime key logs:"
+  tmp=$(mktemp)
+  collect_logs "${tmp}"
+  evaluate_runtime_logs "${tmp}"
+}
+
+scenario_dp_corrupt_missing_end() {
+  info "Scenario: dp_corrupt_missing_end"
+  local tmp
+  tmp=$(mktemp)
+  collect_logs "${tmp}"
+  prompt_lock_if_needed "start lock now (corrupt DP missing end)"
+  if ! corrupt_dp_remove_lock_end; then
+    warn "Failed to corrupt DP lock_end_timestamp; skipping"
+    return
+  fi
+  info "Corrupted DP: lock_end_timestamp removed"
+  reboot_and_wait
+  info "Post-boot lock state (DP):"
+  read_lock_state
+  sleep "${POST_BOOT_SERVICE_WAIT_SECONDS}"
+  info "Post-boot key logs:"
+  tmp=$(mktemp)
+  collect_logs "${tmp}"
+  # Observation-only: lock_end missing may still trigger boot receivers but overlay stops.
+  evaluate_logs "${tmp}" 1
+}
+
+scenario_cold_boot() {
+  info "Scenario: cold_boot"
+  local tmp avd_name prev_serial
+  tmp=$(mktemp)
+  collect_logs "${tmp}"
+  prompt_lock_if_needed "start lock now (emulator cold boot)"
+  avd_name="${AVD_NAME:-}"
+  if [[ -z "${avd_name}" ]]; then
+    avd_name="$(current_avd_name || true)"
+  fi
+  prev_serial="${SERIAL}"
+  info "Stopping emulator (${prev_serial})..."
+  adb_cmd emu kill || true
+  sleep 2
+  if ! start_emulator_cold_boot "${avd_name}"; then
+    warn "Failed to start emulator cold boot. Skipping."
+    return
+  fi
+  info "Waiting for emulator to reconnect..."
+  adb wait-for-device >/dev/null
+  SERIAL=""
+  pick_serial
+  wait_for_boot
+  info "Post-boot settling... (${POST_BOOT_WAIT_SECONDS}s)"
+  sleep "${POST_BOOT_WAIT_SECONDS}"
+  info "Post-boot lock state (DP):"
+  read_lock_state
+  sleep "${POST_BOOT_SERVICE_WAIT_SECONDS}"
+  info "Post-boot key logs:"
+  tmp=$(mktemp)
+  collect_logs "${tmp}"
+  evaluate_logs "${tmp}" 1
+}
+
+scenario_power_off_boot() {
+  info "Scenario: power_off_boot"
+  local tmp
+  tmp=$(mktemp)
+  collect_logs "${tmp}"
+  prompt_lock_if_needed "start lock now (power off -> boot)"
+  info "端末を電源OFFにしてください。完了したら Enter を押してください。"
+  read -r _
+  info "端末を電源ONにして起動してください（復帰後は自動で進行します）。"
+  adb wait-for-device >/dev/null
+  wait_for_boot
+  info "Post-boot settling... (${POST_BOOT_WAIT_SECONDS}s)"
+  sleep "${POST_BOOT_WAIT_SECONDS}"
+  info "Post-boot lock state (DP):"
+  read_lock_state
+  sleep "${POST_BOOT_SERVICE_WAIT_SECONDS}"
+  info "Post-boot key logs:"
+  tmp=$(mktemp)
+  collect_logs "${tmp}"
+  evaluate_logs "${tmp}" 1
+}
+
 scenario_lock_end_before() {
   info "Scenario: lock_end_before"
   local tmp now_ms end_ms remaining wait_seconds
@@ -668,6 +1100,15 @@ run() {
     lock_3m) scenario_lock_3m ;;
     lock_10m) scenario_lock_10m ;;
     lock_60m) scenario_lock_60m ;;
+    lock_60m_no_reboot) scenario_lock_60m_no_reboot ;;
+    lock_90m) scenario_lock_90m ;;
+    lock_120m) scenario_lock_120m ;;
+    screen_off_long) scenario_screen_off_long ;;
+    battery_saver_on) scenario_battery_saver_on ;;
+    time_shift) scenario_time_shift ;;
+    dp_corrupt_missing_end) scenario_dp_corrupt_missing_end ;;
+    cold_boot) scenario_cold_boot ;;
+    power_off_boot) scenario_power_off_boot ;;
     lock_end_before) scenario_lock_end_before ;;
     lock_end_after) scenario_lock_end_after ;;
     my_package_replaced) scenario_my_package_replaced ;;
@@ -677,14 +1118,14 @@ run() {
       done
       ;;
     *)
-      echo "Usage: $0 {all|no_lock|lock_immediate|lock_30s|lock_3m|lock_10m|lock_60m|lock_end_before|lock_end_after|my_package_replaced}" >&2
+      echo "Usage: $0 {all|no_lock|lock_immediate|lock_30s|lock_3m|lock_10m|lock_60m|lock_60m_no_reboot|lock_90m|lock_120m|screen_off_long|battery_saver_on|time_shift|dp_corrupt_missing_end|cold_boot|power_off_boot|lock_end_before|lock_end_after|my_package_replaced}" >&2
       exit 1
       ;;
   esac
 }
 
 if [[ $# -lt 1 ]]; then
-  echo "Usage: $0 {all|no_lock|lock_immediate|lock_30s|lock_3m|lock_10m|lock_60m|lock_end_before|lock_end_after|my_package_replaced}" >&2
+  echo "Usage: $0 {all|no_lock|lock_immediate|lock_30s|lock_3m|lock_10m|lock_60m|lock_60m_no_reboot|lock_90m|lock_120m|screen_off_long|battery_saver_on|time_shift|dp_corrupt_missing_end|cold_boot|power_off_boot|lock_end_before|lock_end_after|my_package_replaced}" >&2
   exit 1
 fi
 
