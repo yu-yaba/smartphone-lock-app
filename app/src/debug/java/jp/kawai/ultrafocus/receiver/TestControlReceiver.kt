@@ -11,9 +11,7 @@ import jp.kawai.ultrafocus.service.WatchdogScheduler
 import jp.kawai.ultrafocus.service.WatchdogWorkScheduler
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 /**
  * Debug-only receiver for automated reboot scenarios.
@@ -31,6 +29,7 @@ class TestControlReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         val action = intent?.action ?: return
         val appContext = context.applicationContext
+        Log.i(TAG, "Received action=$action")
         when (action) {
             ACTION_TEST_LOCK -> handleLock(appContext, intent)
             ACTION_TEST_UNLOCK -> handleUnlock(appContext)
@@ -42,7 +41,7 @@ class TestControlReceiver : BroadcastReceiver() {
         val durationMinutes = intent.getLongExtra(EXTRA_DURATION_MINUTES, DEFAULT_MINUTES)
         val now = System.currentTimeMillis()
         val endAt = intent.getLongExtra(EXTRA_END_TIMESTAMP, now + durationMinutes * 60_000)
-        CoroutineScope(Dispatchers.Default).launch {
+        runBlocking {
             dataStoreManager.updateLockState(
                 isLocked = true,
                 lockStartTimestamp = now,
@@ -60,7 +59,7 @@ class TestControlReceiver : BroadcastReceiver() {
     }
 
     private fun handleUnlock(context: Context) {
-        CoroutineScope(Dispatchers.Default).launch {
+        runBlocking {
             dataStoreManager.updateLockState(false, null, null)
         }
         WatchdogScheduler.cancelHeartbeat(context)

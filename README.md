@@ -14,8 +14,8 @@ Supabase 連携は現状オプション扱いで、URL / Key が未設定でも�
 
 ---
 
-## 2. 現在の実装スナップショット（2026/01/13 時点）
-更新根拠: 2026/01/13 プライマリカラーを #0516FF に変更
+## 2. 現在の実装スナップショット（2026/01/18 時点）
+更新根拠: 2026/01/18 dp_corrupt_missing_end / force-idle 併用 / cold_boot の追加検証結果と実機記録テンプレート・追加シナリオ（解錠タイミング差分含む）を反映
 | フェーズ | ステータス | 現状ハイライト | 次のアクション |
 |---------|------------|----------------|----------------|
 | 0. 基盤整備 | 🟢 完了 | Compose / Hilt / Navigation の土台を `gradle/libs.versions.toml` と `app/build.gradle.kts` に統合。`./gradlew assembleDebug` が安定。 | Lint / Test の CI 自動化（任意）。 |
@@ -24,8 +24,8 @@ Supabase 連携は現状オプション扱いで、URL / Key が未設定でも�
 | 3. ロック UI + Overlay | 🟢 完了 | `LockScreen` ダイヤル UI（分ダイヤルが時間に連動する不具合を解消）、開始確認ダイアログ、`LockScreenViewModel` の DataStore 連携、`OverlayLockService` のフルスクリーン表示と Direct Boot 保存。デバッグ時のみ即時解除ボタンをオーバーレイに追加。 | Overlay 文言／アクセシビリティ調整、Alarm 連携へ布石。 |
 | 4. Foreground 監視 | 🟡 一部 | `LockMonitorService` + `UsageWatcher` が設定・SystemUI・主要ランチャー・音声アシスタント・インストーラ・主要アプリストアを検知し `OverlayManager`/`LockUiLauncher` を発火。`PackageEventThrottler` でデバウンス。ロック中は既定ダイヤラ/SMSのみ例外許可し、オーバーレイからショートカット起動を提供。 | ActivityManager フォールバックや端末依存差異への追加対策。 |
 | 5. 通知ブロック | ⚪ 未着手 | `LockNotificationListenerService` を Manifest 登録のみ。通知ブロックは未実装だが、Android 13+ は `POST_NOTIFICATIONS` をロック必須権限として扱う。 | 通知カテゴリ判定→ `cancelNotification`、通知経由の抜け道封鎖を実装する場合に再度許可を誘導。 |
-| 6. AlarmManager 連携 | 🟡 一部 | `WatchdogScheduler` が正確アラームで 3 分毎のハートビートとロック終了アラームを予約し、`BootCompletedReceiver` が CE/DP のスナップショットを見てサービス再起動＆ウォッチドッグ再設定。`ServiceRestartScheduler` で強制終了後も `LockMonitorService` / `OverlayLockService` を再起動。 | WorkManager 自己診断や正確アラーム拒否端末へのフォールバック、解除通知 UX の設計。 |
-| 7. テスト & QA | ⚪ 未着手 | テンプレートテストを削除済み（現在テストゼロ）。 | ViewModel / Repository / Service の単体テスト、権限〜ロックの UI テスト、再起動手動検証。 |
+| 6. AlarmManager 連携 | 🟡 一部 | `WatchdogScheduler` が正確アラームで 3 分毎のハートビートとロック終了アラームを予約し、`BootCompletedReceiver` が CE/DP のスナップショットを見てサービス再起動＆ウォッチドッグ再設定。`ServiceRestartScheduler` で強制終了後も `LockMonitorService` / `OverlayLockService` を再起動。FGS 起動例外（startForegroundService 未達）対策を追加。 | WorkManager 自己診断や正確アラーム拒否端末へのフォールバック、解除通知 UX の設計。 |
+| 7. テスト & QA | 🟡 一部 | `ServiceRestartSchedulerTest` / `BootFastStartupReceiverTest` を追加し、エミュレータで再起動シナリオ（lock_immediate/30s/3m/10m + no_lock / lock_end_before / lock_end_after / MY_PACKAGE_REPLACED / lock_60m実時間60分待機・ロック設定1時間5分）と通知権限OFFの復帰、Doze強制30分、Exact Alarm拒否を確認。追加で battery_saver_on / screen_off_long / lock_60m_no_reboot / lock_90m / lock_120m / time_shift を実施（短縮・時間シフトあり）。 | 実時間での長時間継続、OEM差分、時刻変更の実機再検証。 |
 | 8. IaC & リリース | ⚪ 未着手 | Terraform / 配布物なし。 | Supabase IaC、Play β 提出物、利用規約・プライバシー整備。 |
 
 ---

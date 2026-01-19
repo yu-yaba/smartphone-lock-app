@@ -91,6 +91,7 @@ class OverlayLockService : Service() {
     private var userUnlockWatcherJob: Job? = null
     private var deviceProtectedSnapshot: LockStatePreferences? = null
     private var foregroundStarted = false
+    private var foregroundSuppressedUntilElapsed: Long = 0L
     private var latestLockState: LockStatePreferences? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var overlayMode: OverlayMode = OverlayMode.LOCK
@@ -112,6 +113,12 @@ class OverlayLockService : Service() {
         val requestedAt = intent?.getLongExtra(EXTRA_REQUESTED_AT, System.currentTimeMillis())
             ?: System.currentTimeMillis()
         val forceShow = intent?.getBooleanExtra(EXTRA_FORCE_SHOW, false) ?: false
+        val suppressForeground = intent?.getBooleanExtra(EXTRA_SUPPRESS_FOREGROUND, false) ?: false
+        val requireForeground = intent?.getBooleanExtra(EXTRA_REQUIRE_FOREGROUND, false) ?: false
+        if (suppressForeground) {
+            foregroundSuppressedUntilElapsed =
+                SystemClock.elapsedRealtime() + FOREGROUND_RETRY_INTERVAL_MILLIS
+        }
         val sinceLast = previousStartWalltime?.let { requestedAt - it }?.takeIf { it >= 0 }
         Log.d(
             TAG,
@@ -125,15 +132,15 @@ class OverlayLockService : Service() {
         }
 
         when (intent?.action) {
-            ACTION_START, null -> startLockDisplay()
+            ACTION_START, null -> startLockDisplay(forceForeground = requireForeground)
             ACTION_SUPPRESS_ALLOWED_APP -> {
                 allowedAppSuppressed = true
                 allowedAppSuppressedAtElapsed = SystemClock.elapsedRealtime()
-                startLockDisplay()
+                startLockDisplay(forceForeground = requireForeground)
                 applyAllowedAppSuppression(true)
             }
             ACTION_RELEASE_ALLOWED_APP -> {
-                startLockDisplay()
+                startLockDisplay(forceForeground = requireForeground)
                 applyAllowedAppSuppression(false)
             }
             else -> Log.w(TAG, "Unknown action received: ${intent?.action}")
@@ -145,6 +152,7 @@ class OverlayLockService : Service() {
         super.onDestroy()
         stopLockDisplay(clearState = false)
         serviceScope.cancel()
+        foregroundSuppressedUntilElapsed = 0L
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -154,14 +162,19 @@ class OverlayLockService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun startLockDisplay() {
+    private fun startLockDisplay(forceForeground: Boolean) {
         if (!Settings.canDrawOverlays(this)) {
             Log.w(TAG, "Overlay permission missing; stopping service")
             stopLockDisplay()
             return
         }
         acquireWakeLock()
-        ensureForeground()
+        val foregroundReady = ensureForeground(force = forceForeground)
+        if (forceForeground && !foregroundReady) {
+            Log.w(TAG, "Foreground start failed after startForegroundService; stopping overlay")
+            stopLockDisplay()
+            return
+        }
         startDeviceProtectedLockCollection()
         startCredentialEncryptedLockCollectionIfUnlocked()
         latestLockState?.let { handleLockState(it) }
@@ -266,7 +279,7 @@ class OverlayLockService : Service() {
 
         latestLockState = effectiveState
         if (effectiveState.isLocked && effectiveState.lockEndTimestamp != null) {
-            ensureForeground()
+            ensureForeground(force = false)
             val mode = resolveOverlayMode()
             if (shouldShowOverlay(mode)) {
                 showOverlayIfNeeded()
@@ -1021,12 +1034,16 @@ class OverlayLockService : Service() {
         wakeLock = null
     }
 
-    private fun ensureForeground() {
-        if (foregroundStarted) return
+    private fun ensureForeground(force: Boolean): Boolean {
+        val nowElapsed = SystemClock.elapsedRealtime()
+        if (foregroundStarted) return true
+        if (!force && nowElapsed < foregroundSuppressedUntilElapsed) return true
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasPostNotificationPermission()) {
             Log.w(TAG, "Notification permission missing; running without foreground")
-            foregroundStarted = true
-            return
+            if (!force) {
+                foregroundSuppressedUntilElapsed = nowElapsed + FOREGROUND_RETRY_INTERVAL_MILLIS
+            }
+            return !force
         }
         val notification = buildNotification(getString(R.string.overlay_service_notification_content))
         try {
@@ -1038,10 +1055,21 @@ class OverlayLockService : Service() {
             }
             foregroundStarted = true
             Log.d(TAG, "Entered foreground for overlay type=${foregroundType ?: "none"}")
+            return true
         } catch (securityException: SecurityException) {
             Log.e(TAG, "Failed to enter foreground", securityException)
             stopSelf()
+            return false
+        } catch (runtimeException: RuntimeException) {
+            Log.e(TAG, "Failed to enter foreground; continue without foreground", runtimeException)
+            if (!force) {
+                foregroundSuppressedUntilElapsed = nowElapsed + FOREGROUND_RETRY_INTERVAL_MILLIS
+            } else {
+                stopSelf()
+            }
+            return false
         }
+        return false
     }
 
     private fun demoteForegroundIfNeeded(reason: String) {
@@ -1113,6 +1141,7 @@ class OverlayLockService : Service() {
         private const val RESTART_REQUEST_CODE = 9002
         private const val START_DEBOUNCE_MILLIS = 12_000L
         private const val RESTART_DEBOUNCE_MILLIS = 3_000L
+        private const val FOREGROUND_RETRY_INTERVAL_MILLIS = 30_000L
         private const val RESTART_REASON = "service_restart"
         private const val WAKE_LOCK_TIMEOUT_MILLIS = 180_000L
         private const val PERMISSION_RECOVERY_QUERY_WINDOW_MILLIS = 2_000L
@@ -1124,6 +1153,8 @@ class OverlayLockService : Service() {
         private const val EXTRA_REQUESTED_AT = "extra_requested_at"
         private const val EXTRA_DEBOUNCE_HANDLED = "extra_debounce_handled"
         private const val EXTRA_FORCE_SHOW = "extra_force_show"
+        private const val EXTRA_SUPPRESS_FOREGROUND = "extra_suppress_foreground"
+        private const val EXTRA_REQUIRE_FOREGROUND = "extra_require_foreground"
         private var previousStartWalltime: Long? = null
 
         @Volatile
@@ -1154,25 +1185,34 @@ class OverlayLockService : Service() {
             }
 
             val appContext = context.applicationContext
+            val suppressForeground = shouldSuppressForegroundStart(reason)
+            val canStartForeground =
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    hasPostNotificationPermission(appContext)
+            val requireForeground =
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && canStartForeground && !suppressForeground
             val intent = Intent(appContext, OverlayLockService::class.java).apply {
                 action = ACTION_START
                 putExtra(EXTRA_START_REASON, reason)
                 putExtra(EXTRA_REQUESTED_AT, System.currentTimeMillis())
                 putExtra(EXTRA_DEBOUNCE_HANDLED, true)
                 putExtra(EXTRA_FORCE_SHOW, forceShow)
+                putExtra(EXTRA_SUPPRESS_FOREGROUND, suppressForeground)
+                putExtra(EXTRA_REQUIRE_FOREGROUND, requireForeground)
             }
-            val canStartForeground =
-                Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                    hasPostNotificationPermission(appContext)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && canStartForeground) {
+            if (requireForeground) {
                 runCatching { ContextCompat.startForegroundService(appContext, intent) }
-                    .onFailure { Log.e(TAG, "Unable to start overlay service", it) }
+                    .onFailure { throwable ->
+                        Log.e(TAG, "Unable to start overlay service", throwable)
+                        ServiceRestartScheduler.schedule(appContext, OverlayLockService::class.java, RESTART_REQUEST_CODE)
+                    }
             } else {
                 runCatching {
                     @Suppress("DEPRECATION")
                     appContext.startService(intent)
                 }.onFailure { throwable ->
                     Log.e(TAG, "Unable to start overlay service in background", throwable)
+                    ServiceRestartScheduler.schedule(appContext, OverlayLockService::class.java, RESTART_REQUEST_CODE)
                 }
             }
         }
@@ -1183,24 +1223,33 @@ class OverlayLockService : Service() {
                 return
             }
             val appContext = context.applicationContext
+            val suppressForeground = shouldSuppressForegroundStart(reason)
+            val canStartForeground =
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    hasPostNotificationPermission(appContext)
+            val requireForeground =
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && canStartForeground && !suppressForeground
             val intent = Intent(appContext, OverlayLockService::class.java).apply {
                 action = if (suppressed) ACTION_SUPPRESS_ALLOWED_APP else ACTION_RELEASE_ALLOWED_APP
                 putExtra(EXTRA_START_REASON, reason)
                 putExtra(EXTRA_REQUESTED_AT, System.currentTimeMillis())
                 putExtra(EXTRA_DEBOUNCE_HANDLED, true)
+                putExtra(EXTRA_SUPPRESS_FOREGROUND, suppressForeground)
+                putExtra(EXTRA_REQUIRE_FOREGROUND, requireForeground)
             }
-            val canStartForeground =
-                Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                    hasPostNotificationPermission(appContext)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && canStartForeground) {
+            if (requireForeground) {
                 runCatching { ContextCompat.startForegroundService(appContext, intent) }
-                    .onFailure { Log.e(TAG, "Unable to update overlay suppression", it) }
+                    .onFailure { throwable ->
+                        Log.e(TAG, "Unable to update overlay suppression", throwable)
+                        ServiceRestartScheduler.schedule(appContext, OverlayLockService::class.java, RESTART_REQUEST_CODE)
+                    }
             } else {
                 runCatching {
                     @Suppress("DEPRECATION")
                     appContext.startService(intent)
                 }.onFailure { throwable ->
                     Log.e(TAG, "Unable to update overlay suppression in background", throwable)
+                    ServiceRestartScheduler.schedule(appContext, OverlayLockService::class.java, RESTART_REQUEST_CODE)
                 }
             }
         }
@@ -1229,6 +1278,10 @@ class OverlayLockService : Service() {
             }
             lastStartElapsedRealtime = nowElapsed
             return false
+        }
+
+        private fun shouldSuppressForegroundStart(reason: String): Boolean {
+            return reason.startsWith("boot_") || reason == "workmanager"
         }
     }
 
