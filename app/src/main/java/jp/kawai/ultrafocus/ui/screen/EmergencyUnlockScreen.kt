@@ -182,8 +182,7 @@ private fun EmergencyUnlockContent(
                         maxLines = 8
                         gravity = Gravity.TOP or Gravity.START
                         inputType = InputType.TYPE_CLASS_TEXT or
-                            InputType.TYPE_TEXT_FLAG_MULTI_LINE or
-                            InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+                            InputType.TYPE_TEXT_FLAG_MULTI_LINE
                         imeOptions = EditorInfo.IME_FLAG_NO_ENTER_ACTION
                         hint = context.getString(R.string.emergency_unlock_input_placeholder)
                         setPadding(inputPadding, inputPadding, inputPadding, inputPadding)

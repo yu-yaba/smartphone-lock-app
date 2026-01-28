@@ -18,6 +18,10 @@ class NoPasteEditText @JvmOverloads constructor(
     init {
         isLongClickable = false
         setTextIsSelectable(false)
+        // Some OEMs drop focus when selectable is disabled; re-enable focus explicitly.
+        isFocusable = true
+        isFocusableInTouchMode = true
+        isCursorVisible = true
     }
 
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
