@@ -1,6 +1,6 @@
 *.iml
-.gradle
-/local.properties
+
+# Android Studio / IntelliJ
 /.idea/caches
 /.idea/libraries
 /.idea/modules.xml
@@ -9,12 +9,32 @@
 /.idea/workspace.xml
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
-.DS_Store
+/.idea/deploymentTargetSelector.xml
+
+# Build outputs / local caches
+/.gradle
+/.gradle-local
+/.gradle-tmp
+/.kotlin
 /build
+/app/build
 /captures
 .externalNativeBuild
 .cxx
+/app/release/*.aab
+/app/release/*.apk
+*.aab
+*.apk
+
+# Local config / secrets
+/local.properties
 local.properties
 .env
+.env.*
+*.jks
+*.keystore
+
+# OS / tooling local data
+.DS_Store
 .serena/
 .worktrees/
