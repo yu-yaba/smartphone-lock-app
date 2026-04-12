@@ -78,6 +78,7 @@ class TestControlReceiver : BroadcastReceiver() {
         val targetPackage = AllowedAppResolver.resolveDialerPackage(context)
         if (targetPackage.isNullOrBlank()) {
             AllowedAppLaunchStore.clear(context)
+            LockMonitorService.syncAllowedAppMonitorMode(context)
             OverlayLockService.setAllowedAppSuppressed(
                 context,
                 suppressed = false,
@@ -94,6 +95,7 @@ class TestControlReceiver : BroadcastReceiver() {
         AllowedAppLaunchStore.startLaunch(context)
         AllowedAppLaunchStore.startSession(context)
         AllowedAppLaunchStore.setAllowed(context, targetPackage)
+        LockMonitorService.syncAllowedAppMonitorMode(context)
         Log.i(TAG, "Prepared allowed dialer package=$targetPackage")
     }
 
