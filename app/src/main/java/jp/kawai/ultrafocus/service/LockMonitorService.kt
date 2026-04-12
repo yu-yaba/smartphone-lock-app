@@ -17,6 +17,7 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import jp.kawai.ultrafocus.BuildConfig
 import jp.kawai.ultrafocus.R
 import jp.kawai.ultrafocus.data.repository.LockRepository
 import jp.kawai.ultrafocus.data.repository.SettingsPackages
@@ -239,12 +240,31 @@ class LockMonitorService : Service() {
             if (launchInProgress && !allowedAppForeground) {
                 return
             }
+            if (BuildConfig.DEBUG) {
+                val nowWallTime = System.currentTimeMillis()
+                Log.i(
+                    TAG,
+                    "perf_home_overlay step=allowed_app_home_detected package=$packageName " +
+                        "wallTimeMillis=$nowWallTime elapsedRealtime=$nowElapsed " +
+                        "sessionActive=$sessionActive launchInProgress=$launchInProgress " +
+                        "allowedAppForeground=$allowedAppForeground"
+                )
+            }
             sessionActive = false
             allowedAppForeground = false
             lastAllowedAppSeenElapsed = 0L
             pendingAllowedSessionExitPackage = null
             pendingAllowedSessionExitStartedAt = 0L
             AllowedAppLaunchStore.clear(this@LockMonitorService)
+            if (BuildConfig.DEBUG) {
+                val requestWallTime = System.currentTimeMillis()
+                val requestElapsed = SystemClock.elapsedRealtime()
+                Log.i(
+                    TAG,
+                    "perf_home_overlay step=overlay_release_requested package=$packageName " +
+                        "wallTimeMillis=$requestWallTime elapsedRealtime=$requestElapsed"
+                )
+            }
             OverlayLockService.setAllowedAppSuppressed(this@LockMonitorService, false)
             if (!inPermissionRecoverySettings) {
                 overlayManager.show(bypassDebounce = true)

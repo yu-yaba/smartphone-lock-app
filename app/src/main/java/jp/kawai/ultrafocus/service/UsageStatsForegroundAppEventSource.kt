@@ -4,6 +4,7 @@ import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.util.Log
+import jp.kawai.ultrafocus.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -30,6 +31,13 @@ class UsageStatsForegroundAppEventSource @Inject constructor(
             while (usageEvents.hasNextEvent()) {
                 usageEvents.getNextEvent(event)
                 if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND && !event.packageName.isNullOrBlank()) {
+                    if (BuildConfig.DEBUG) {
+                        Log.i(
+                            TAG,
+                            "perf_home_overlay step=launcher_usage_event package=${event.packageName} " +
+                                "eventTimeMillis=${event.timeStamp} observedWallTimeMillis=$end"
+                        )
+                    }
                     onEvent(event.packageName)
                 }
             }
