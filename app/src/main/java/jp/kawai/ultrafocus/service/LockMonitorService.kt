@@ -17,6 +17,7 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import jp.kawai.ultrafocus.BuildConfig
 import jp.kawai.ultrafocus.R
 import jp.kawai.ultrafocus.data.repository.LockRepository
 import jp.kawai.ultrafocus.data.repository.SettingsPackages
@@ -79,6 +80,7 @@ class LockMonitorService : Service() {
         super.onCreate()
         createNotificationChannel()
         acquireWakeLock()
+        foregroundAppMonitor.setHighFrequencyMode(false)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -110,6 +112,7 @@ class LockMonitorService : Service() {
 
         acquireWakeLock()
         lockRepository.refreshDynamicLists()
+        syncForegroundMonitorMode()
         val foregroundReady = ensureForeground(reason, force = requireForeground)
         if (requireForeground && !foregroundReady) {
             Log.w(TAG, "Foreground start failed after startForegroundService; stopping service")
@@ -125,6 +128,7 @@ class LockMonitorService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        foregroundAppMonitor.setHighFrequencyMode(false)
         serviceScope.cancel()
         releaseWakeLock()
         lockStateJob = null
@@ -181,6 +185,7 @@ class LockMonitorService : Service() {
         isLocked = nextState
         if (!nextState) {
             allowedAppForeground = false
+            foregroundAppMonitor.setHighFrequencyMode(false)
         }
         if (nextState) {
             // ロック開始時は確実に即時オーバーレイを掲出したいのでデバウンスを無視する
@@ -188,9 +193,17 @@ class LockMonitorService : Service() {
         }
     }
 
+    private fun syncForegroundMonitorMode(
+        launchInProgress: Boolean = AllowedAppLaunchStore.isLaunchInProgress(this@LockMonitorService),
+        sessionActive: Boolean = AllowedAppLaunchStore.isSessionActive(this@LockMonitorService),
+    ) {
+        foregroundAppMonitor.setHighFrequencyMode(launchInProgress || sessionActive || allowedAppForeground)
+    }
+
     private suspend fun handleForegroundPackage(packageName: String) {
         val nowElapsed = SystemClock.elapsedRealtime()
         if (EmergencyUnlockState.isActive() || EmergencyUnlockStateStore.isActive(this@LockMonitorService)) {
+            foregroundAppMonitor.setHighFrequencyMode(false)
             if (packageName != this.packageName) {
                 redirectToEmergencyUnlock(packageName, reason = "foreground_detected")
             }
@@ -198,6 +211,7 @@ class LockMonitorService : Service() {
         }
         val launchInProgress = AllowedAppLaunchStore.isLaunchInProgress(this@LockMonitorService)
         var sessionActive = AllowedAppLaunchStore.isSessionActive(this@LockMonitorService)
+        syncForegroundMonitorMode(launchInProgress = launchInProgress, sessionActive = sessionActive)
 
         if (launchInProgress &&
             (packageName == this.packageName ||
@@ -217,6 +231,7 @@ class LockMonitorService : Service() {
         val isTemporarilyAllowed = AllowedAppLaunchStore.isAllowed(this, packageName)
         val isAllowedApp = allowedTargets.isAllowed(packageName) || isTemporarilyAllowed
         if (isAllowedApp) {
+            foregroundAppMonitor.setHighFrequencyMode(true)
             allowedAppForeground = true
             lastAllowedAppSeenElapsed = nowElapsed
             pendingAllowedSessionExitPackage = null
@@ -239,12 +254,32 @@ class LockMonitorService : Service() {
             if (launchInProgress && !allowedAppForeground) {
                 return
             }
+            if (BuildConfig.DEBUG) {
+                val nowWallTime = System.currentTimeMillis()
+                Log.i(
+                    TAG,
+                    "perf_home_overlay step=allowed_app_home_detected package=$packageName " +
+                        "wallTimeMillis=$nowWallTime elapsedRealtime=$nowElapsed " +
+                        "sessionActive=$sessionActive launchInProgress=$launchInProgress " +
+                        "allowedAppForeground=$allowedAppForeground"
+                )
+            }
             sessionActive = false
             allowedAppForeground = false
             lastAllowedAppSeenElapsed = 0L
             pendingAllowedSessionExitPackage = null
             pendingAllowedSessionExitStartedAt = 0L
             AllowedAppLaunchStore.clear(this@LockMonitorService)
+            foregroundAppMonitor.setHighFrequencyMode(false)
+            if (BuildConfig.DEBUG) {
+                val requestWallTime = System.currentTimeMillis()
+                val requestElapsed = SystemClock.elapsedRealtime()
+                Log.i(
+                    TAG,
+                    "perf_home_overlay step=overlay_release_requested package=$packageName " +
+                        "wallTimeMillis=$requestWallTime elapsedRealtime=$requestElapsed"
+                )
+            }
             OverlayLockService.setAllowedAppSuppressed(this@LockMonitorService, false)
             if (!inPermissionRecoverySettings) {
                 overlayManager.show(bypassDebounce = true)
@@ -261,6 +296,7 @@ class LockMonitorService : Service() {
                 pendingAllowedSessionExitPackage = null
                 pendingAllowedSessionExitStartedAt = 0L
                 AllowedAppLaunchStore.clear(this@LockMonitorService)
+                foregroundAppMonitor.setHighFrequencyMode(false)
                 OverlayLockService.setAllowedAppSuppressed(this@LockMonitorService, false)
                 if (!inPermissionRecoverySettings) {
                     overlayManager.show(bypassDebounce = true)
@@ -276,6 +312,7 @@ class LockMonitorService : Service() {
             pendingAllowedSessionExitPackage = null
             pendingAllowedSessionExitStartedAt = 0L
             AllowedAppLaunchStore.clear(this@LockMonitorService)
+            foregroundAppMonitor.setHighFrequencyMode(false)
             OverlayLockService.setAllowedAppSuppressed(this@LockMonitorService, false)
             if (!inPermissionRecoverySettings) {
                 overlayManager.show(bypassDebounce = true)
@@ -492,6 +529,7 @@ class LockMonitorService : Service() {
         private const val RESTART_DEBOUNCE_MILLIS = 3_000L
         private const val FOREGROUND_RETRY_INTERVAL_MILLIS = 30_000L
         private const val RESTART_REASON = "service_restart"
+        private const val ALLOWED_APP_MONITOR_MODE_SYNC_REASON = "allowed_app_monitor_mode_sync"
         private const val WAKE_LOCK_TIMEOUT_MILLIS = 180_000L
         private const val EXTRA_START_REASON = "extra_start_reason"
         private const val EXTRA_REQUESTED_AT = "extra_requested_at"
@@ -540,6 +578,14 @@ class LockMonitorService : Service() {
         fun stop(context: Context) {
             val intent = Intent(context, LockMonitorService::class.java)
             context.stopService(intent)
+        }
+
+        fun syncAllowedAppMonitorMode(context: Context) {
+            start(
+                context = context,
+                reason = ALLOWED_APP_MONITOR_MODE_SYNC_REASON,
+                bypassDebounce = true
+            )
         }
 
         private fun shouldDebounce(reason: String?, bypass: Boolean): Boolean {

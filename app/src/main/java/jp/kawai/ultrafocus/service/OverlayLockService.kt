@@ -610,6 +610,15 @@ class OverlayLockService : Service() {
             container.isFocusable = false
         }
         windowManager.addView(container, layoutParams)
+        if (BuildConfig.DEBUG) {
+            Log.i(
+                TAG,
+                "perf_home_overlay step=overlay_visible_again path=add_view " +
+                    "wallTimeMillis=${System.currentTimeMillis()} " +
+                    "elapsedRealtime=${SystemClock.elapsedRealtime()} " +
+                    "overlayAlreadyExists=false"
+            )
+        }
         if (allowedAppSuppressed) {
             applyOverlaySuppressionState(suppressed = true)
         }
@@ -676,6 +685,7 @@ class OverlayLockService : Service() {
             applyOverlaySuppressionState(suppressed = true)
             return
         }
+        val overlayAlreadyExists = overlayContainer != null
         if (allowedAppSuppressed == suppressed) {
             allowedAppSuppressedAtElapsed = 0L
             return
@@ -687,6 +697,15 @@ class OverlayLockService : Service() {
             showOverlayIfNeeded()
         }
         applyOverlaySuppressionState(suppressed = false)
+        if (BuildConfig.DEBUG && overlayAlreadyExists) {
+            Log.i(
+                TAG,
+                "perf_home_overlay step=overlay_visible_again path=unsuppress " +
+                    "wallTimeMillis=${System.currentTimeMillis()} " +
+                    "elapsedRealtime=${SystemClock.elapsedRealtime()} " +
+                    "overlayAlreadyExists=true"
+            )
+        }
         updateOverlayModeIfNeeded(mode)
     }
 
